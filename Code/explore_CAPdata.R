@@ -12,7 +12,6 @@ library(tidyverse) # load packages for cleaning data
 ### -----------------------------------------------------
 ##  Read in annual financial data and clean it
 CAP_annual_historical_finances_profit_loss = read.xlsx(file = "P&L_RateRecon history_PNNL request.xlsx", sheetName = "GF P&L")
-CAP_annual_historical_finances_reconciliation = read.xlsx(file = "P&L_RateRecon history_PNNL request.xlsx", sheetName = "OMR Rec")
 
 # remove empty rows and columns, rename FY headers
 CAP_annual_historical_finances_profit_loss = CAP_annual_historical_finances_profit_loss %>% 
@@ -42,7 +41,7 @@ CAP_annual_historical_finances_profit_loss = CAP_annual_historical_finances_prof
 CAP_PL_long = CAP_annual_historical_finances_profit_loss %>%
   pivot_longer(cols = starts_with('20'), names_to = 'FY', values_to = 'Thousand USD')
 
-### -------------------------------------------------
+
 ##  plot for fun
 # individual timeseries for each variable in data
 temp = ggplot(data = CAP_PL_long) + 
@@ -99,15 +98,119 @@ for (group_set in unique(subset_to_plot$Group)) {
 
 ### ---------------------------------------------
 ##  Repeat plotting process for remaining finanial data
+
+# read data
+CAP_annual_historical_finances_reconciliation = read.xlsx(file = "P&L_RateRecon history_PNNL request.xlsx", sheetName = "OMR Rec")
+
 # remove empty rows and columns, rename FY headers
-CAP_annual_historical_finances_reconciliation = CAP_annual_historical_finances_reconciliation %>% 
-  select(NA..1,X2011.Actual:X2020.Actual) %>% filter(!is.na(NA..1)) %>% 
-  rename(Variable = NA..1,
-         '2011' = X2011.Actual, '2012' = X2012.Actual, '2013' = X2013.Actual, '2014' = X2014.Actual, '2015' = X2015.Actual,
-         '2016' = X2016.Actual, '2017' = X2017..Actual, '2018' = X2018.Actual, '2019' = X2019.Actual, '2020' = X2020.Actual) %>%
-  mutate(Group = NA) %>% filter(row_number() != n())
+CAP_annual_historical_finances_reconciliation_reduced = CAP_annual_historical_finances_reconciliation %>% 
+  select(Rate.Reconciliation:NA..9) %>% 
+  filter(!is.na(Rate.Reconciliation)) %>% 
+  filter(Rate.Reconciliation != '(Dollars in Thousands)') %>% 
+  rename(Variable = Rate.Reconciliation,
+         '2011' = NA., '2012' = NA..1, '2013' = NA..2, '2014' = NA..3, '2015' = NA..4,
+         '2016' = NA..5, '2017' = NA..6, '2018' = NA..7, '2019' = NA..8, '2020' = NA..9) 
 
+# group variables
+CAP_annual_historical_finances_reconciliation_reduced = 
+  CAP_annual_historical_finances_reconciliation_reduced %>% mutate(Group = NA)
+row_val = CAP_annual_historical_finances_reconciliation_reduced$Variable[1]
+for (r in 1:nrow(CAP_annual_historical_finances_reconciliation_reduced)) {
+  if (is.na(CAP_annual_historical_finances_reconciliation_reduced$`2011`[r])) {
+    row_val = CAP_annual_historical_finances_reconciliation_reduced$Variable[r]
+  } 
+  CAP_annual_historical_finances_reconciliation_reduced$Group[r] = row_val
+}
 
+# remove original grouping separation rows, format data the same
+CAP_annual_historical_finances_reconciliation_reduced_final = 
+  CAP_annual_historical_finances_reconciliation_reduced %>% drop_na('2011') %>%
+  mutate_if(is.numeric, as.character)
+
+# convert to long format
+CAP_Rec_long = CAP_annual_historical_finances_reconciliation_reduced_final %>%
+  pivot_longer(cols = starts_with('20'), names_to = 'FY', values_to = 'Thousand USD')
+
+##  plot for fun
+# individual timeseries for each variable in data
+temp = ggplot(data = CAP_Rec_long) + 
+  geom_bar(aes(x = FY, y = as.numeric(`Thousand USD`), fill = Group), stat = "identity", color = NA) + 
+  facet_wrap(Group ~ Variable, scales = "free_y", ncol = 5) + ylab('Units (see panel subtitles)') +
+  theme(axis.text.x = element_text(angle = 90)) + guides(fill = FALSE)
+ggsave("visualization/CAP_reconciliation_fiscal_trends_2011_to_2020_separatedflows.png", 
+       dpi = 400, units = "in", height = 10, width = 18)
+
+# grouped by type and shown different ways to demonstrate proportions
+# separate water rate, water delivery, and financial categories
+subset_to_plot_delivery = CAP_Rec_long %>% filter(grepl('Acre-Feet', Group)) 
+temp = ggplot(data = subset_to_plot_delivery) + 
+  geom_bar(aes(x = FY, y = as.numeric(`Thousand USD`)/1000, fill = Variable), 
+           stat = "identity", position = "stack", size = 1, color = NA) +
+  facet_grid(Group ~ Variable) + ylab('Deliveries (kAF)') + guides(fill = FALSE) + 
+  xlab('Fiscal Year') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3), axis.ticks.x = element_blank()) + 
+  ggtitle("CAP Annual Water Deliveries")
+ggsave("visualization/CAP_reconciliation_fiscal_trends_2011_to_2020_separateflows_deliveries.png", 
+       dpi = 400, units = "in", height = 5, width = length(unique(subset_to_plot_delivery$Variable))*3)
+
+## repeat for rates
+subset_to_plot_rates = CAP_Rec_long %>% filter(grepl('AF', Group)) %>%
+  mutate(Variable = gsub(pattern = "Published", replacement = "", x = Variable)) %>%
+  mutate(Variable = gsub(pattern = " rate", replacement = "", x = Variable)) %>%
+  mutate(Variable = gsub(pattern = "Total  ", replacement = "", x = Variable)) %>%
+  mutate(Variable = gsub(pattern = "Total ", replacement = "", x = Variable)) %>%
+  mutate(Variable = gsub(pattern = "Calculated ", replacement = "", x = Variable)) %>%
+  mutate(Variable = gsub(pattern = "Published ", replacement = "", x = Variable)) %>%
+  mutate(Variable = trimws(x = Variable, which = 'both', whitespace = "[ ]")) %>% 
+  mutate(Variable = gsub(pattern = "Fixed OM&R Rate", replacement = "Fixed OM&R", x = Variable))
+
+temp = ggplot(data = subset_to_plot_rates) + 
+  geom_bar(aes(x = FY, y = as.numeric(`Thousand USD`), fill = Variable), 
+           stat = "identity", position = "stack", size = 1, color = NA) +
+  facet_grid(Variable ~ Group, scales = "free_y") + ylab('Rate ($/AF)') + guides(fill = FALSE) + 
+  xlab('Fiscal Year') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3), axis.ticks.x = element_blank()) + 
+  ggtitle("CAP Annual Water Rates")
+ggsave("visualization/CAP_reconciliation_fiscal_trends_2011_to_2020_separateflows_rates.png", 
+       dpi = 400, units = "in", width = 8, height = length(unique(subset_to_plot_rates$Variable))*3)
+
+# widen subset of rate data to determine differences between budgeted and published rates
+subset_to_plot_rates_wide = subset_to_plot_rates %>%
+  pivot_wider(names_from = 'FY', values_from = 'Thousand USD') 
+
+difference_set = subset_to_plot_rates_wide %>% 
+  filter(Group != 'Water Delivery Rate ($/AF)') %>% select(`2011`:`2020`) %>%
+  mutate_if(is.character, as.numeric) - 
+  subset_to_plot_rates_wide %>% 
+  filter(Group == 'Water Delivery Rate ($/AF)') %>% select(`2011`:`2020`) %>%
+  mutate_if(is.character, as.numeric)
+difference_set = difference_set %>% 
+  mutate(Variable = unique(subset_to_plot_rates_wide$Variable), Group = 'Difference')
+difference_set_long = difference_set %>% pivot_longer(cols = starts_with('20'), names_to = 'FY', values_to = '$/AF')
+
+temp = ggplot(data = difference_set_long) + 
+  geom_bar(aes(x = FY, y = as.numeric(`$/AF`), fill = Variable), 
+           stat = "identity", position = "stack", size = 1, color = NA) +
+  facet_grid(Group ~ Variable) + ylab('Rate Difference ($/AF)') + guides(fill = FALSE) + 
+  xlab('Fiscal Year') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3), axis.ticks.x = element_blank()) + 
+  ggtitle(label = "CAP Annual Water Rates - Differences between Budgeted and Published Rates", 
+          subtitle = "(Positive: Published rate higher than budgeted rate)")
+ggsave("visualization/CAP_reconciliation_fiscal_trends_2011_to_2020_separateflows_rates_differences.png", 
+       dpi = 400, units = "in", height = 6, width = length(unique(subset_to_plot_rates$Variable))*2.5)
+
+## repeat for financial values
+subset_to_plot_financial = CAP_Rec_long %>% filter(!grepl('Acre-Feet', Group)) %>% filter(!grepl('AF', Group))
+temp = ggplot(data = subset_to_plot_financial) + 
+  geom_bar(aes(x = FY, y = as.numeric(`Thousand USD`)/1000, fill = Variable), 
+           stat = "identity", position = "stack", size = 1, color = NA) +
+  facet_wrap(Group ~ Variable, scales = "free_y") + ylab('') + guides(fill = FALSE) + 
+  xlab('Fiscal Year') +
+  scale_y_continuous(labels = scales::dollar_format(prefix="$", suffix = "M")) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3), axis.ticks.x = element_blank()) + 
+  ggtitle("CAP Annual Financial Actuals")
+ggsave("visualization/CAP_reconciliation_fiscal_trends_2011_to_2020_separateflows_finances.png", 
+       dpi = 400, units = "in", height = 7, width = 18)
 
 
 
