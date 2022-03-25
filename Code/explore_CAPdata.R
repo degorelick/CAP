@@ -6,11 +6,16 @@
 
 rm(list=ls()) # clear memory
 setwd('C:/Users/dgorelic/OneDrive - University of North Carolina at Chapel Hill/UNC/Research/IM3/CAP/Data') # set directory
+options(java.parameters = c("-XX:+UseConcMarkSweepGC", "-Xmx8192m")) # allow enough memory space to read excel
+options(java.parameters = "-Xmx8000m")
+options(java.parameters = "- Xmx1024m")
 library(xlsx) # load package to read Excel files
-library(tidyverse) # load packages for cleaning data
+
+
 
 ### -----------------------------------------------------
 ##  Read in annual financial data and clean it
+library(tidyverse) # load packages for cleaning data
 CAP_annual_historical_finances_profit_loss = read.xlsx(file = "P&L_RateRecon history_PNNL request.xlsx", sheetName = "GF P&L")
 
 # remove empty rows and columns, rename FY headers
@@ -98,6 +103,7 @@ for (group_set in unique(subset_to_plot$Group)) {
 
 ### ---------------------------------------------
 ##  Repeat plotting process for remaining finanial data
+library(tidyverse) # load packages for cleaning data
 
 # read data
 CAP_annual_historical_finances_reconciliation = read.xlsx(file = "P&L_RateRecon history_PNNL request.xlsx", sheetName = "OMR Rec")
@@ -214,4 +220,81 @@ ggsave("visualization/CAP_reconciliation_fiscal_trends_2011_to_2020_separateflow
 
 
 
+
+
+
+### -----------------------------------------------------
+##  Read in forecast spreadsheet and collect info annually
+##    this is a huge amount of data so it will take some time
+##    there are many tabs, so we can do this annually
+for (year_tab in 2008:2021) {
+  # read in year tab
+  extra_tab_value = ""; if (year_tab >= 2020) {extra_tab_value = " T0"}
+  CAP_forecast = read.xlsx(file = "forecast Historical 2008 to 2021.xlsx", 
+                           sheetName = paste(as.character(year_tab), extra_tab_value, sep = ""))
+  print(paste(as.character(year_tab), extra_tab_value, sep = ""))
+  
+  # extract commonly-formatted data
+  # first ~80% of each sheet has consistent formatting - last chunk of 
+  # forecast data is a set titled TOTAL DELIVERIES BY CLASS
+  # that I will use as a flag to split up the data and read it
+  # consistently between tabs
+  final_first_set_row = which(stringr::str_squish(CAP_forecast$NA.) == "TOTAL DELIVERIES")[
+    which(stringr::str_squish(CAP_forecast$NA.) == "TOTAL DELIVERIES") > 
+      which(stringr::str_squish(CAP_forecast$NA.) == "TOTAL DELIVERIES BY CLASS")]
+  
+  # there are consistent section headers in each year, with standard formatting
+  # so we can try to collect the info based on this?
+  SectionHeaders = c(CAP_forecast$NA.[grepl("PP", stringr::str_squish(CAP_forecast$NA.))], 
+                     "WADDELL PGP", "TOTAL SYSTEM DELIVERIES", "TOTAL DELIVERIES BY CLASS")
+  ColumnNames = c("Variable", 
+                  "Jan", "Feb", "Mar", "Q1", 
+                  "Apr", "May", "Jun", "Q2", 
+                  "Jul", "Aug", "Sep", "Q3", 
+                  "Oct", "Nov", "Dec", "Q4", "Total",
+                  "Empty1", "Physical Turnout", "Empty2")
+  all_sections = CAP_forecast[1,] %>% filter(NA. != section_name) %>%
+    rename_at(vars(colnames(CAP_forecast)), function(x) ColumnNames) %>% select(-c(Empty1, Empty2)) %>%
+    mutate(Group = NA, Subgroup = NA, Name = NA, Section = NA, Year = NA) %>% filter(!is.na(Jan))
+  for (section_name in SectionHeaders) {
+    # set bounds to read in each section of code
+    section_start_row = which(CAP_forecast$NA. == section_name)
+    section_end_row = min(which(CAP_forecast$NA. %in% SectionHeaders)[
+      which(CAP_forecast$NA. %in% SectionHeaders) > section_start_row], final_first_set_row+1, na.rm = TRUE)
+    
+    # read in and organize
+    section = CAP_forecast[section_start_row:(section_end_row-1),] %>% filter(NA. != section_name) %>%
+      rename_at(vars(colnames(CAP_forecast)), function(x) ColumnNames) %>% select(-c(Empty1, Empty2)) %>%
+      mutate(Group = NA, Subgroup = NA, Name = NA, Section = stringr::str_squish(section_name), Year = year_tab)
+    
+    # based on indentations, sort into subcategory headers
+    temporary_group = NA; temporary_subgroup = NA; temporary_name = NA
+    for (row in 1:nrow(section)) {
+      if (is.na(section$Variable[row])) {next}
+      # longest indentations are names of users? more than 5 spaces of indentation
+      if (startsWith(stringr::str_squish(section$Variable[row]), "TOTAL")) {
+        temporary_group = section$Variable[row]; temporary_subgroup = NA; temporary_name = NA
+      } else if (startsWith(section$Variable[row], "      ")) {
+        temporary_name = section$Variable[row]
+      } else if (startsWith(section$Variable[row], " ")) {
+        temporary_subgroup = section$Variable[row]; temporary_name = NA
+      } else {
+        temporary_group = section$Variable[row]; temporary_subgroup = NA; temporary_name = NA
+      }
+      section$Group[row] = stringr::str_squish(temporary_group)
+      section$Subgroup[row] = stringr::str_squish(temporary_subgroup)
+      section$Name[row] = stringr::str_squish(temporary_name)
+    }
+    
+    # clean up by dropping empty rows (mostly rows that just had headers in original file)
+    # and add to larger master set
+    section_clean = section %>% filter(!is.na(Jan))
+    all_sections = rbind(all_sections, section_clean)
+    
+    rm(CAP_forecast)
+  }
+}
+
+# print to cleaned spreadsheet
+write.csv(file = "cleaned_annual_forecast_first_section.csv", x = all_sections)
 
