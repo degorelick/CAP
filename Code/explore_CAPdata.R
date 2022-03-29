@@ -306,4 +306,22 @@ for (year_tab in 2008:2021) {
 # print to cleaned spreadsheet
 write.csv(file = paste("cleaned_annual_forecast_first_section_ALLYEARS.csv", sep = ""), x = all_sections)
 
+# do some plotting!
+unique(all_sections$Group)
+
+# results by month?
+for (s in unique(all_sections$Section)) {
+  plotter = all_sections %>% filter(all_sections$Section == s) %>% 
+    filter(!grepl("VOLUME PASSING", Variable)) %>%
+    filter(!grepl("TOTAL", Variable)) %>%
+    filter(!grepl("SEGMENT DEMAND", Variable))
+  temp = ggplot(data = plotter) +
+    geom_bar(aes(x = Year, y = as.numeric(Total), fill = Group), stat = "identity", color = NA) + 
+    facet_wrap(Section ~ ., scales = "free_y") + ylab('AF') +
+    theme(axis.text.x = element_text(angle = 90))
+  ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section", s, ".png", sep = ""), 
+         dpi = 400, units = "in", height = 5, width = 8)
+}
+
+
 
