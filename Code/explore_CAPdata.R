@@ -6,16 +6,10 @@
 
 rm(list=ls()) # clear memory
 setwd('C:/Users/dgorelic/OneDrive - University of North Carolina at Chapel Hill/UNC/Research/IM3/CAP/Data') # set directory
-options(java.parameters = c("-XX:+UseConcMarkSweepGC", "-Xmx8192m")) # allow enough memory space to read excel
-options(java.parameters = "-Xmx8000m")
-options(java.parameters = "- Xmx1024m")
-library(xlsx) # load package to read Excel files
-
-
+library(tidyverse)
 
 ### -----------------------------------------------------
 ##  Read in annual financial data and clean it
-library(tidyverse) # load packages for cleaning data
 CAP_annual_historical_finances_profit_loss = read.xlsx(file = "P&L_RateRecon history_PNNL request.xlsx", sheetName = "GF P&L")
 
 # remove empty rows and columns, rename FY headers
@@ -103,7 +97,6 @@ for (group_set in unique(subset_to_plot$Group)) {
 
 ### ---------------------------------------------
 ##  Repeat plotting process for remaining finanial data
-library(tidyverse) # load packages for cleaning data
 
 # read data
 CAP_annual_historical_finances_reconciliation = read.xlsx(file = "P&L_RateRecon history_PNNL request.xlsx", sheetName = "OMR Rec")
@@ -230,41 +223,57 @@ ggsave("visualization/CAP_reconciliation_fiscal_trends_2011_to_2020_separateflow
 for (year_tab in 2008:2021) {
   # read in year tab
   extra_tab_value = ""; if (year_tab >= 2020) {extra_tab_value = " T0"}
-  CAP_forecast = read.xlsx(file = "forecast Historical 2008 to 2021.xlsx", 
-                           sheetName = paste(as.character(year_tab), extra_tab_value, sep = ""))
+  CAP_forecast = readxl::read_xlsx(path = "forecast Historical 2008 to 2021.xlsx", 
+                                   sheet = paste(as.character(year_tab), extra_tab_value, sep = ""), 
+                                   trim_ws = FALSE)
   print(paste(as.character(year_tab), extra_tab_value, sep = ""))
+  
+  # standardize basic column headers so we can be consistent between spreadsheets
+  n_columns_in_sheet = ncol(CAP_forecast)
+  sheet_columns_base_names = paste("C", as.character(c(1:n_columns_in_sheet)), sep="")
+  colnames(CAP_forecast) = sheet_columns_base_names
   
   # extract commonly-formatted data
   # first ~80% of each sheet has consistent formatting - last chunk of 
   # forecast data is a set titled TOTAL DELIVERIES BY CLASS
   # that I will use as a flag to split up the data and read it
   # consistently between tabs
-  final_first_set_row = which(stringr::str_squish(CAP_forecast$NA.) == "TOTAL DELIVERIES")[
-    which(stringr::str_squish(CAP_forecast$NA.) == "TOTAL DELIVERIES") > 
-      which(stringr::str_squish(CAP_forecast$NA.) == "TOTAL DELIVERIES BY CLASS")]
+  final_first_set_row = which(stringr::str_squish(CAP_forecast$C1) == "TOTAL DELIVERIES")[
+    which(stringr::str_squish(CAP_forecast$C1) == "TOTAL DELIVERIES") > 
+      which(stringr::str_squish(CAP_forecast$C1) == "TOTAL DELIVERIES BY CLASS")]
   
   # there are consistent section headers in each year, with standard formatting
   # so we can try to collect the info based on this?
-  SectionHeaders = c(CAP_forecast$NA.[grepl("PP", stringr::str_squish(CAP_forecast$NA.))], 
+  SectionHeaders = c(CAP_forecast$C1[grepl("PP", stringr::str_squish(CAP_forecast$C1))], 
                      "WADDELL PGP", "TOTAL SYSTEM DELIVERIES", "TOTAL DELIVERIES BY CLASS")
   ColumnNames = c("Variable", 
                   "Jan", "Feb", "Mar", "Q1", 
                   "Apr", "May", "Jun", "Q2", 
                   "Jul", "Aug", "Sep", "Q3", 
                   "Oct", "Nov", "Dec", "Q4", "Total",
-                  "Empty1", "Physical Turnout", "Empty2")
-  all_sections = CAP_forecast[1,] %>% filter(NA. != section_name) %>%
-    rename_at(vars(colnames(CAP_forecast)), function(x) ColumnNames) %>% select(-c(Empty1, Empty2)) %>%
-    mutate(Group = NA, Subgroup = NA, Name = NA, Section = NA, Year = NA) %>% filter(!is.na(Jan))
+                  "Empty1", "Physical Turnout", "Empty2")[1:min(n_columns_in_sheet,21)]
+  
+  # create master table to hold all years
+  if (year_tab == 2008) {
+    all_sections = CAP_forecast[1,] %>% 
+      rename_at(vars(colnames(CAP_forecast)[1:length(ColumnNames)]), function(x) ColumnNames) %>% 
+      select(-grep("Empty", ColumnNames))
+    all_sections = all_sections %>%
+      select(-grep("C", colnames(all_sections))) %>%
+      mutate(Group = NA, Subgroup = NA, Name = NA, Section = NA, Year = NA) %>% filter(!is.na(Jan))
+  }
   for (section_name in SectionHeaders) {
     # set bounds to read in each section of code
-    section_start_row = which(CAP_forecast$NA. == section_name)
-    section_end_row = min(which(CAP_forecast$NA. %in% SectionHeaders)[
-      which(CAP_forecast$NA. %in% SectionHeaders) > section_start_row], final_first_set_row+1, na.rm = TRUE)
+    section_start_row = which(CAP_forecast$C1 == section_name)
+    section_end_row = min(which(CAP_forecast$C1 %in% SectionHeaders)[
+      which(CAP_forecast$C1 %in% SectionHeaders) > section_start_row], final_first_set_row+1, na.rm = TRUE)
     
     # read in and organize
-    section = CAP_forecast[section_start_row:(section_end_row-1),] %>% filter(NA. != section_name) %>%
-      rename_at(vars(colnames(CAP_forecast)), function(x) ColumnNames) %>% select(-c(Empty1, Empty2)) %>%
+    section = CAP_forecast[section_start_row:(section_end_row-1),] %>% filter(C1 != section_name) %>%
+      rename_at(vars(colnames(CAP_forecast)[1:length(ColumnNames)]), function(x) ColumnNames) %>% 
+      select(-grep("Empty", ColumnNames))
+    section = section %>%
+      select(-grep("C", colnames(section))) %>%
       mutate(Group = NA, Subgroup = NA, Name = NA, Section = stringr::str_squish(section_name), Year = year_tab)
     
     # based on indentations, sort into subcategory headers
@@ -291,10 +300,10 @@ for (year_tab in 2008:2021) {
     section_clean = section %>% filter(!is.na(Jan))
     all_sections = rbind(all_sections, section_clean)
     
-    rm(CAP_forecast)
   }
 }
 
 # print to cleaned spreadsheet
-write.csv(file = "cleaned_annual_forecast_first_section.csv", x = all_sections)
+write.csv(file = paste("cleaned_annual_forecast_first_section_ALLYEARS.csv", sep = ""), x = all_sections)
+
 
