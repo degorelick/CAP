@@ -265,6 +265,9 @@ for (year_tab in 2008:2021) {
       select(-grep("C", colnames(all_sections))) %>%
       mutate(Group = NA, Subgroup = NA, Name = NA, Section = NA, Year = NA) %>% filter(!is.na(Jan))
   }
+  
+  ## run code for first half of data
+  # for debugging: section_name = SectionHeaders[4] is Hassayampa PP
   for (section_name in SectionHeaders) {
     # set bounds to read in each section of code
     section_start_row = which(CAP_forecast$C1 == section_name)
@@ -283,6 +286,28 @@ for (year_tab in 2008:2021) {
     temporary_group = NA; temporary_subgroup = NA; temporary_name = NA
     for (row in 1:nrow(section)) {
       if (is.na(section$Variable[row])) {next}
+      
+      # appears to be a typo in this particular region, causing
+      # all the ag use to be transcribed under "DROUGHT" use
+      if (section_name == "SALT GILA PP" & section$Variable[row] == "DROUGHT") {
+        section$Variable[row] = "    Drought"
+      }
+      
+      # also, there is a case where some temporary rows are not indented as necessary 
+      # and this disrupts how the following rows are classified
+      if (section$Variable[row] == "Temporary (-) for reduced deliveries (m&i)") {
+        section$Variable[row] = "           Temporary (-) for reduced deliveries"
+      } 
+      if (section$Variable[row] == "Temporary Reduced M&I demand  (-) ") {
+        section$Variable[row] = "           Temporary (-) for reduced deliveries"
+      }
+      if (section$Variable[row] == "Temporary Indirect Reduced demand (-)") {
+        section$Variable[row] = "           Temporary (-) for reduced deliveries"
+      }
+      if (section$Variable[row] == "Temporary (-) for reduced deliveries (ag)") {
+        section$Variable[row] = "           Temporary (-) for reduced deliveries"
+      }
+      
       # longest indentations are names of users? more than 5 spaces of indentation
       if (startsWith(stringr::str_squish(section$Variable[row]), "TOTAL")) {
         temporary_group = section$Variable[row]; temporary_subgroup = NA; temporary_name = NA
@@ -300,10 +325,55 @@ for (year_tab in 2008:2021) {
     
     # clean up by dropping empty rows (mostly rows that just had headers in original file)
     # and add to larger master set
-    section_clean = section %>% filter(!is.na(Jan))
+    section_clean = section %>% filter(!is.na(Jan) | !is.na(Total))
     all_sections = rbind(all_sections, section_clean)
     
   }
+  
+  ## collect remaining data from bottom of sheets
+  SectionHeaders = c("CAP Pumping Plants - Projection of Water Volumes Pumped",
+                     "Analysis and breakdown of energy use", 
+                     "CAP Pumping Plants - Average Flow Projection",
+                     "CAP Pumping Plants - Projection of Energy Use",
+                     "CAP Pumping Plants - Projection of Energy Use - For Waddell Filling Only",
+                     "CAP Pumping Plants - Projection of Energy Use - For Deliveries Only",
+                     "Projection of Navajo Power Purchases",
+                     "Projection of CAP Energy Purchases",
+                     "HOURLY AVERAGE of CAP Energy Resources (Mega Watts)",
+                     "Monthly Projection of CAP Energy Resources (Mega Watt Hours)",
+                     "Mark Wilmer PP Detailed Daily \"Average\"  Power Schedule",
+                     "CAP Pumping Plants - Daily \"Average\"  Power Schedule",
+                     "Non-firm Transmission Service",
+                     "CAP Energy Transmission Losses (Financial Reconcilation)",
+                     "CAP Energy Transmission Losses",
+                     "Lake Pleasant Projected EOM Elevation (ft)")
+  # this is not the best option, but for each table (which shifts position between sheets)
+  # set the dimensions box to search based on the location of the chart/section title,
+  # and the horizontal offset from the upper left corner of the dimension box
+  SectionDimensions = list(c(18,14, 1),
+                           c(15,13, 2),
+                           c(18,13, 1),
+                           c(18,15, 1),
+                           c(19,16, 2),
+                           c(),
+                           c(),
+                           c(),
+                           c(),
+                           c(),
+                           c(),
+                           c(),
+                           c(),
+                           c(),
+                           c(),
+                           c())
+  for (section_name in SectionHeaders) {
+    section_two = CAP_forecast[(final_first_set_row+1):nrow(CAP_forecast),]
+  }
+  
+    
+  CAP_forecast[apply(CAP_forecast, MARGIN = 1, function(r) any(grepl("By:", r))),]
+  
+  
 }
 
 # print to cleaned spreadsheet
@@ -342,6 +412,29 @@ temp = ggplot(data = plotter) +
   facet_wrap(Group ~ ., scales = "free_y", nrow = 1) + ylab('') + xlab("Acre-Feet") +
   theme(axis.text.x = element_text(angle = 90))
 ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_NamedUsers", ".png", sep = ""), 
-       dpi = 400, units = "in", height = 20, width = 40)
+       dpi = 400, units = "in", height = 35, width = 40)
+
+# plot users over time/diversion region
+temp = ggplot(data = plotter[which(plotter$Section != "TOTAL SYSTEM DELIVERIES"),]) +
+  geom_bar(aes(y = as.numeric(Total), x = Year, fill = Subgroup), stat = "identity", color = NA) + 
+  facet_grid(Section ~ Group) + xlab('Year') + ylab("Acre-Feet") +
+  theme(axis.text.x = element_text(angle = 90))
+ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_aggregateintimespace", ".png", sep = ""), 
+       dpi = 400, units = "in", height = 18, width = 12)
+
+temp = ggplot(data = plotter[which(plotter$Section != "TOTAL SYSTEM DELIVERIES"),]) +
+  geom_bar(aes(y = as.numeric(Total), x = Year, fill = Subgroup), stat = "identity", color = NA) + 
+  facet_grid(Section ~ Group, scales = "free_y") + xlab('Year') + ylab("Acre-Feet") +
+  theme(axis.text.x = element_text(angle = 90))
+ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_aggregateintimespace_freeyaxis", ".png", sep = ""), 
+       dpi = 400, units = "in", height = 18, width = 12)
+
+# plot over time 
+temp = ggplot(data = plotter) +
+  geom_bar(aes(y = as.numeric(Total), x = Year, fill = Subgroup), stat = "identity", color = NA) + 
+  facet_wrap(Group ~ ., nrow = 1) + xlab('Year') + ylab("Acre-Feet") +
+  theme(axis.text.x = element_text(angle = 90))
+ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_aggregateintime", ".png", sep = ""), 
+       dpi = 400, units = "in", height = 7, width = 15)
 
 
