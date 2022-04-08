@@ -350,24 +350,39 @@ for (year_tab in 2008:2021) {
   # this is not the best option, but for each table (which shifts position between sheets)
   # set the dimensions box to search based on the location of the chart/section title,
   # and the horizontal offset from the upper left corner of the dimension box
-  SectionDimensions = list(c(18,14, 1),
-                           c(15,13, 2),
-                           c(18,13, 1),
-                           c(18,15, 1),
-                           c(19,16, 2),
-                           c(),
-                           c(),
-                           c(),
-                           c(),
-                           c(),
-                           c(),
-                           c(),
-                           c(),
-                           c(),
-                           c(),
-                           c())
-  for (section_name in SectionHeaders) {
-    section_two = CAP_forecast[(final_first_set_row+1):nrow(CAP_forecast),]
+  SectionDimensions = list(c(18,25, 1),
+                           c(15,23, 2),
+                           c(18,23, 1),
+                           c(18,25, 1),
+                           c(9,25, 2),
+                           c(8,25, 1),
+                           c(16,25, 6),
+                           c(19,29, 7),
+                           c(19,19, 1),
+                           c(19,24, 1),
+                           c(16,22, 1),
+                           c(21,20, 1),
+                           c(2,20, 0),
+                           c(18,30, 1),
+                           c(18,30, 1),
+                           c(1,14, 0))
+  for (section_id in c(1:length(SectionHeaders))) {
+    # first, locate table in sheet (if present)
+    section_name = SectionHeaders[section_id]
+    section_header_row = which(apply(CAP_forecast, MARGIN = 1, function(r) any(grepl(section_name, r))))
+    if (is.na(section_header_row)) {next}
+    
+    # extract range of table and check for errors...
+    section_end_row = section_header_row + SectionDimensions[[section_id]][2]
+    section_start_col = 
+      which(apply(CAP_forecast[section_header_row,], MARGIN = 2, function(r) any(grepl(section_name, r)))) -
+      SectionDimensions[[section_id]][3]
+    section_end_col = section_start_col + SectionDimensions[[section_id]][1]
+    section_table = CAP_forecast[section_header_row:section_end_row,section_start_col:section_end_col]
+    
+    # clean out empty rows and extract just monthly data and totals
+    
+    
   }
   
     
@@ -397,8 +412,8 @@ for (s in unique(all_sections$Section)) {
 # just do the volume passing - proxy for physical distance from Lake Havasu/CO River?
 plotter = all_sections %>% filter(grepl("VOLUME PASSING", Variable)) %>% arrange(desc(as.numeric(Total)))
 temp = ggplot(data = plotter) +
-  geom_line(aes(x = Section, y = as.numeric(Total), color = Year, group = Year)) + 
-   ylab('AF') +
+  geom_line(aes(x = reorder(Section, -as.numeric(Total)), y = as.numeric(Total)/1000, color = Year, group = Year)) + 
+   ylab('kAF') + xlab('CAP Section') + ggtitle('Water volume passing each section of the CAP Canal, by year') +
   theme(axis.text.x = element_text(angle = 90))
 ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_VOLUMEPASSING", ".png", sep = ""), 
        dpi = 400, units = "in", height = 5, width = 8)
@@ -415,6 +430,7 @@ ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_NamedUsers
        dpi = 400, units = "in", height = 35, width = 40)
 
 # plot users over time/diversion region
+plotter = plotter %>% mutate(Section = fct_reorder(Section, as.numeric(Total), .desc = TRUE))
 temp = ggplot(data = plotter[which(plotter$Section != "TOTAL SYSTEM DELIVERIES"),]) +
   geom_bar(aes(y = as.numeric(Total), x = Year, fill = Subgroup), stat = "identity", color = NA) + 
   facet_grid(Section ~ Group) + xlab('Year') + ylab("Acre-Feet") +
