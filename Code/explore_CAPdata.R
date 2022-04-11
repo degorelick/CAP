@@ -99,16 +99,18 @@ for (group_set in unique(subset_to_plot$Group)) {
 ##  Repeat plotting process for remaining finanial data
 
 # read data
-CAP_annual_historical_finances_reconciliation = read.xlsx(file = "P&L_RateRecon history_PNNL request.xlsx", sheetName = "OMR Rec")
+CAP_annual_historical_finances_reconciliation = 
+  readxl::read_xlsx(path = "P&L_RateRecon history_PNNL request.xlsx", sheet = "OMR Rec",
+                    trim_ws = FALSE)
 
 # remove empty rows and columns, rename FY headers
 CAP_annual_historical_finances_reconciliation_reduced = CAP_annual_historical_finances_reconciliation %>% 
-  select(Rate.Reconciliation:NA..9) %>% 
-  filter(!is.na(Rate.Reconciliation)) %>% 
-  filter(Rate.Reconciliation != '(Dollars in Thousands)') %>% 
-  rename(Variable = Rate.Reconciliation,
-         '2011' = NA., '2012' = NA..1, '2013' = NA..2, '2014' = NA..3, '2015' = NA..4,
-         '2016' = NA..5, '2017' = NA..6, '2018' = NA..7, '2019' = NA..8, '2020' = NA..9) 
+  select(`Rate Reconciliation`:...11) %>% 
+  filter(!is.na(`Rate Reconciliation`)) %>% 
+  filter(`Rate Reconciliation` != '(Dollars in Thousands)') %>% 
+  rename(Variable = `Rate Reconciliation`,
+         '2011' = ...2, '2012' = ...3, '2013' = ...4, '2014' = ...5, '2015' = ...6,
+         '2016' = ...7, '2017' = ...8, '2018' = ...9, '2019' = ...10, '2020' = ...11) 
 
 # group variables
 CAP_annual_historical_finances_reconciliation_reduced = 
@@ -173,6 +175,23 @@ temp = ggplot(data = subset_to_plot_rates) +
 ggsave("visualization/CAP_reconciliation_fiscal_trends_2011_to_2020_separateflows_rates.png", 
        dpi = 400, units = "in", width = 8, height = length(unique(subset_to_plot_rates$Variable))*3)
 
+# show stacked contributions to total rate
+plotter = subset_to_plot_rates %>% 
+  filter(Variable != "Water Delivery Rate") %>%
+  filter(Variable != "Fixed OM&R") %>%
+  filter(Variable != "Pumping Energy Rate")
+temp = ggplot(data = plotter) + 
+  geom_bar(aes(x = FY, y = as.numeric(`Thousand USD`), fill = Variable), 
+           stat = "identity", position = "stack", size = 1, color = NA) +
+  facet_grid(. ~ Group, scales = "free_y") + ylab('Rate ($/AF)') +  
+  guides(fill = guide_legend(title = "Rate Component")) +
+  xlab('Fiscal Year') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.3), axis.ticks.x = element_blank()) + 
+  ggtitle("Composition of CAP Annual Water Rates")
+ggsave("visualization/CAP_reconciliation_fiscal_trends_2011_to_2020_cumulativecontribution_rates.png", 
+       dpi = 400, units = "in", width = 8, height = 4)
+
+
 # widen subset of rate data to determine differences between budgeted and published rates
 subset_to_plot_rates_wide = subset_to_plot_rates %>%
   pivot_wider(names_from = 'FY', values_from = 'Thousand USD') 
@@ -187,7 +206,11 @@ difference_set = difference_set %>%
   mutate(Variable = unique(subset_to_plot_rates_wide$Variable), Group = 'Difference')
 difference_set_long = difference_set %>% pivot_longer(cols = starts_with('20'), names_to = 'FY', values_to = '$/AF')
 
-temp = ggplot(data = difference_set_long) + 
+plotter = difference_set_long %>% 
+  filter(Variable != "Water Delivery Rate") %>%
+  filter(Variable != "Fixed OM&R") %>%
+  filter(Variable != "Pumping Energy Rate")
+temp = ggplot(data = plotter) + 
   geom_bar(aes(x = FY, y = as.numeric(`$/AF`), fill = Variable), 
            stat = "identity", position = "stack", size = 1, color = NA) +
   facet_grid(Group ~ Variable) + ylab('Rate Difference ($/AF)') + guides(fill = FALSE) + 
@@ -196,7 +219,7 @@ temp = ggplot(data = difference_set_long) +
   ggtitle(label = "CAP Annual Water Rates - Differences between Budgeted and Published Rates", 
           subtitle = "(Positive: Published rate higher than budgeted rate)")
 ggsave("visualization/CAP_reconciliation_fiscal_trends_2011_to_2020_separateflows_rates_differences.png", 
-       dpi = 400, units = "in", height = 6, width = length(unique(subset_to_plot_rates$Variable))*2.5)
+       dpi = 400, units = "in", height = 6, width = length(unique(plotter$Variable))*2.5)
 
 ## repeat for financial values
 subset_to_plot_financial = CAP_Rec_long %>% filter(!grepl('Acre-Feet', Group)) %>% filter(!grepl('AF', Group))
@@ -352,8 +375,8 @@ for (year_tab in 2008:2021) {
   # and the horizontal offset from the upper left corner of the dimension box
   SectionDimensions = list(c(18,25, 1),
                            c(15,23, 2),
-                           c(18,23, 1),
-                           c(18,25, 1),
+                           c(18,23, 3),
+                           c(18,25, 3),
                            c(9,25, 2),
                            c(8,25, 1),
                            c(16,25, 6),
@@ -362,37 +385,78 @@ for (year_tab in 2008:2021) {
                            c(19,24, 1),
                            c(16,22, 1),
                            c(21,20, 1),
-                           c(2,20, 0),
+                           c(1,20, 0),
                            c(18,30, 1),
                            c(18,30, 1),
                            c(1,14, 0))
+  # create master list to hold all tables
+  if (year_tab == 2008) {
+    all_bottom_sections = list()
+  }
   for (section_id in c(1:length(SectionHeaders))) {
     # first, locate table in sheet (if present)
     section_name = SectionHeaders[section_id]
-    section_header_row = which(apply(CAP_forecast, MARGIN = 1, function(r) any(grepl(section_name, r))))
-    if (is.na(section_header_row)) {next}
+    section_header_row = which(apply(CAP_forecast, MARGIN = 1, function(r) 
+      any(grepl(paste("\\<", section_name, "\\>", sep = ""), r) | 
+            r == section_name | 
+            grepl(paste("\\b", section_name, "\\b", sep = ""), r), na.rm = TRUE)))
+    section_header_col = 
+      which(apply(CAP_forecast[section_header_row,], MARGIN = 2, function(r) 
+        any(grepl(paste("\\<", section_name, "\\>", sep = ""), r) | 
+              r == section_name | 
+              grepl(paste("\\b", section_name, "\\b", sep = ""), r), na.rm = TRUE)))
+    if (length(section_header_row) == 0) {next}
+    
+    # if more than one header row was caught, scan to find the exact match
+    if (length(section_header_row) > 1) {
+      temp_data_to_check = CAP_forecast[section_header_row, section_header_col] %>% mutate_if(is.character, stringr::str_squish)
+      correct_index = which(temp_data_to_check == section_name, arr.ind = TRUE)
+      section_header_row = section_header_row[correct_index[1]]
+      section_header_col = section_header_col[correct_index[2]]
+    }
     
     # extract range of table and check for errors...
     section_end_row = section_header_row + SectionDimensions[[section_id]][2]
-    section_start_col = 
-      which(apply(CAP_forecast[section_header_row,], MARGIN = 2, function(r) any(grepl(section_name, r)))) -
-      SectionDimensions[[section_id]][3]
-    section_end_col = section_start_col + SectionDimensions[[section_id]][1]
-    section_table = CAP_forecast[section_header_row:section_end_row,section_start_col:section_end_col]
+    section_start_col = max(section_header_col - SectionDimensions[[section_id]][3],1)
+    section_end_col = min(section_start_col + SectionDimensions[[section_id]][1], 
+                          ncol(CAP_forecast))
+    section_table = CAP_forecast[section_header_row:section_end_row, section_start_col:section_end_col]
     
-    # clean out empty rows and extract just monthly data and totals
-    
-    
+    # if this is the first year of data, format the master tables
+    # else, clean out empty rows add to table
+    # once raw data has been roughly aggregated, more cleaning will be done
+    sheet_columns_base_names = paste("C", as.character(c(1:ncol(section_table))), sep="")
+    colnames(section_table) = sheet_columns_base_names
+    if (year_tab == 2008 | section_id > length(all_bottom_sections)) {
+      all_bottom_sections[[section_id]] = section_table %>% filter(!is.na(C1) | !is.na(C2)) %>% 
+        mutate(Year = year_tab, Table = section_name)
+    } else {
+      all_bottom_sections[[section_id]] = rbind(all_bottom_sections[[section_id]], 
+                                                section_table %>% filter(!is.na(C1) | !is.na(C2)) %>% 
+                                                  mutate(Year = year_tab, Table = section_name))
+    }
   }
-  
-    
-  CAP_forecast[apply(CAP_forecast, MARGIN = 1, function(r) any(grepl("By:", r))),]
-  
-  
 }
 
 # print to cleaned spreadsheet
 write.csv(file = paste("cleaned_annual_forecast_first_section_ALLYEARS.csv", sep = ""), x = all_sections)
+
+# print to initial spreadsheet for recordkeeping
+for (section_id in 1:length(SectionHeaders)) {
+  if (section_id == 1) {
+    xlsx::write.xlsx(x = all_bottom_sections[[section_id]], 
+                     file = "cleaned_annual_forecast_second_section_ALLYEARS.xlsx", 
+                     sheetName = as.character(section_id))
+  } else {
+    xlsx::write.xlsx(x = all_bottom_sections[[section_id]], 
+                     file = "cleaned_annual_forecast_second_section_ALLYEARS.xlsx", 
+                     sheetName = as.character(section_id), append = TRUE)
+  }
+}
+
+## clean the section section semi-manually!
+
+
 
 # do some plotting!
 # results by month?
@@ -417,6 +481,52 @@ temp = ggplot(data = plotter) +
   theme(axis.text.x = element_text(angle = 90))
 ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_VOLUMEPASSING", ".png", sep = ""), 
        dpi = 400, units = "in", height = 5, width = 8)
+
+# plot seasonal patterns of deliveries at each pumping plant region
+plotter = all_sections %>% 
+  mutate(Section = fct_relevel(Section, 
+                               "HAVASU PP", "BOUSE PP", "LITTLE HARQUAHALA PP", 
+                               "HASSAYAMPA PP", "WADDELL PGP", "SALT GILA PP", "BRADY PP",  
+                               "PICACHO PP", "RED ROCK PP", "TWIN PEAKS PP", 
+                               "SANDARIO PP", "BRAWLEY PP", "SNYDER HILL PP",
+                               "SAN XAVIER PP", "BLACK MOUNTAIN PP", 
+                               "TOTAL SYSTEM DELIVERIES", "TOTAL DELIVERIES BY CLASS")) %>%
+  filter(!grepl("VOLUME PASSING", Variable)) %>%
+  filter(!grepl("TOTAL", Variable)) %>%
+  filter(!grepl("SEGMENT DEMAND", Variable)) %>%
+  filter(!grepl("Canal", Variable)) %>%
+  filter(!grepl("FLOW", Variable)) %>%
+  pivot_longer(cols = c(Jan:Mar,Apr:Jun,Jul:Sep,Oct:Dec), names_to = 'Month', values_to = 'AF') %>%
+  filter(!is.na(AF)) %>%
+  filter(!is.na(Name)) %>%
+  filter(!grepl("FLOW", Group)) %>%
+  filter(!grepl("CAIDD", Group)) %>%
+  filter(!grepl("Remarket", Group)) %>%
+  filter(!grepl("TOTAL", Section)) %>%
+  mutate(Group = replace(Group, Group == "RECHARGE1:", "RECHARGE:"))
+
+temp = ggplot(data = plotter) +
+  geom_bar(aes(x = fct_relevel(Month, 
+                               "Jan", "Feb", "Mar", "Apr", "May", "Jun",  
+                               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 
+               y = as.numeric(AF)/1000, fill = Year, group = Year), stat = "identity") + 
+  ylab('AF') + xlab('Month') + ggtitle('Seasonal water delivery patterns in each section of the CAP Canal, 2008-2021') +
+  facet_grid(Group ~ Section, scales = "free_y") + ylab('kAF') +
+  theme(axis.text.x = element_text(angle = 90), strip.text.y = element_text(angle = 0, size = 10))
+ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_seasonal_bysectoryear", ".png", sep = ""), 
+       dpi = 400, units = "in", height = 10, width = 21)
+
+temp = ggplot(data = plotter) +
+  geom_bar(aes(x = fct_relevel(Month, 
+                               "Jan", "Feb", "Mar", "Apr", "May", "Jun",  
+                               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 
+               y = as.numeric(AF)/1000, fill = Year, group = Year), stat = "identity") + 
+  ylab('AF') + xlab('Month') + ggtitle('Seasonal water delivery patterns in each section of the CAP Canal, 2008-2021') +
+  facet_grid(Group ~ Section) + ylab('kAF') +
+  theme(axis.text.x = element_text(angle = 90), strip.text.y = element_text(angle = 0, size = 10))
+ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_seasonal_bysectoryear_normalized", ".png", sep = ""), 
+       dpi = 400, units = "in", height = 10, width = 21)
+
 
 # identify biggest users?
 plotter = all_sections %>% filter(!is.na(Name)) %>% arrange(desc(as.numeric(Total))) %>%
