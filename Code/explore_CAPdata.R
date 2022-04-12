@@ -381,7 +381,7 @@ for (year_tab in 2008:2021) {
                            c(8,25, 1),
                            c(16,25, 6),
                            c(19,29, 7),
-                           c(19,19, 1),
+                           c(21,19, 1),
                            c(19,24, 1),
                            c(16,22, 1),
                            c(21,20, 1),
@@ -430,6 +430,10 @@ for (year_tab in 2008:2021) {
     if (year_tab == 2008 | section_id > length(all_bottom_sections)) {
       all_bottom_sections[[section_id]] = section_table %>% filter(!is.na(C1) | !is.na(C2)) %>% 
         mutate(Year = year_tab, Table = section_name)
+      if (section_name == "Projection of CAP Energy Purchases") {
+        all_bottom_sections[[section_id]] = section_table %>% filter(!is.na(C1) | !is.na(C2) | !is.na(C3)) %>% 
+          mutate(Year = year_tab, Table = section_name)
+      }
     } else {
       all_bottom_sections[[section_id]] = rbind(all_bottom_sections[[section_id]], 
                                                 section_table %>% filter(!is.na(C1) | !is.na(C2)) %>% 
@@ -459,7 +463,114 @@ lower_case_months = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 upper_case_months = c("JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
-for (section in all_bottom_sections[4]) {
+for (section in all_bottom_sections[9]) {
+  
+  if (section$Table[1] == "HOURLY AVERAGE of CAP Energy Resources (Mega Watts)") {
+    # table size shifts after 2015
+    # 2019, 2020 have "TRUE" for long energy sales (should equal negated OPS balance energy)
+    first_section = section %>% filter(Year < 2016)
+    second_section = section %>% filter(Year >= 2016) %>%
+      mutate(C21 = ifelse(C21 == "TRUE", as.character(-as.numeric(C19)), C21))
+    
+    # apply headers to both sets, melt, then merge
+    first_section[5,3] = as.character(as.numeric(first_section[5,3]))
+    first_section[5,4] = as.character(as.numeric(first_section[5,4]))
+    first_section[3,13] = as.character(second_section[3,13])
+    first_new_names_for_new_cols = stringr::str_squish(
+      stringr::str_c(stringr::str_replace_na(first_section[3,2:18], ""), 
+                     stringr::str_replace_na(first_section[4,2:18], ""), 
+                     stringr::str_replace_na(first_section[5,2:18], ""), 
+                     stringr::str_replace_na(first_section[6,2:18], ""),sep = " "))
+  
+    first_section_cleaned = first_section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, "Total")) %>%
+      mutate(C1 = toupper(C1)) %>%
+      select(-C19, -C20, -C21, -C22)
+    colnames(first_section_cleaned) = c("Month", first_new_names_for_new_cols, "Year", "Table")
+    
+    second_section[5,3] = as.character(as.numeric(second_section[5,3]))
+    second_section[5,4] = as.character(as.numeric(second_section[5,4]))
+    second_new_names_for_new_cols = stringr::str_squish(
+      stringr::str_c(stringr::str_replace_na(second_section[3,2:21], ""), 
+                     stringr::str_replace_na(second_section[4,2:21], ""), 
+                     stringr::str_replace_na(second_section[5,2:21], ""), 
+                     stringr::str_replace_na(second_section[6,2:21], ""),sep = " "))
+    second_section_cleaned = second_section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, "Total")) %>%
+      mutate(C1 = toupper(C1)) %>%
+      select(-C22)
+    colnames(second_section_cleaned) = c("Month", second_new_names_for_new_cols, "Year", "Table")
+    
+    # stick them together
+    second_section_cleaned = reshape2::melt(second_section_cleaned, id = c("Table", "Year", "Month")) 
+    first_section_cleaned = reshape2::melt(first_section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = rbind(first_section_cleaned, second_section_cleaned)
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
+  }
+  
+  if (section$Table[1] == "Projection of CAP Energy Purchases") {
+    section_cleaned = section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, "Total")) %>%
+      mutate(C1 = toupper(C1)) %>%
+      select(-C2, -C6, -C10, -C14, -C18, -C19, -C20)
+    section[1,3:18] = as.list(rep(unique(as.character(section[1,3:18]))[c(1,3,4,5)], each = 4))
+    new_names_for_new_cols = stringr::str_squish(stringr::str_c(stringr::str_replace_na(section[1,3:17], ""), 
+                                                                stringr::str_replace_na(section[3,3:17], ""), 
+                                                                stringr::str_replace_na(section[4,3:17], ""), 
+                                                                stringr::str_replace_na(section[5,3:17], ""), 
+                                                                stringr::str_replace_na(section[6,3:17], ""),sep = " "))
+    colnames(section_cleaned) = c("Month", 
+                                  new_names_for_new_cols[-c(4,8,12)],
+                                  "Year", "Table")
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
+  }
+  
+  if (section$Table[1] == "Projection of Navajo Power Purchases") {
+    section_cleaned = section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, "Total")) %>%
+      mutate(C1 = toupper(C1)) %>%
+      select(-C16, -C17)
+    section[3,3] = as.character(as.numeric(section[3,3]))
+    new_names_for_new_cols = stringr::str_squish(stringr::str_c(stringr::str_replace_na(section[1,2:15], ""), 
+                                                                stringr::str_replace_na(section[2,2:15], ""), 
+                                                                stringr::str_replace_na(section[3,2:15], ""), 
+                                                                stringr::str_replace_na(section[4,2:15], ""), sep = " "))
+    colnames(section_cleaned) = c("Month", 
+                                  new_names_for_new_cols,
+                                  "Year", "Table")
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
+  }
+  
+  if (section$Table[1] == "CAP Pumping Plants - Projection of Energy Use - For Deliveries Only") {
+    section_cleaned = section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, "Total", "(KWH/AF)->")) %>%
+      mutate(C1 = toupper(C1)) %>%
+      select(-C8, -C9) %>%
+      mutate(C7 = ifelse(C1 == "(KWH/AF)->", NA, C7))
+    colnames(section_cleaned) = c("Month", 
+                                  stringr::str_c(section[2,2:6], stringr::str_replace_na(section[3,2:6], ""), sep = ""),
+                                  "Total West Energy",
+                                  "Year", "Table")
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
+  }
+  
+  if (section$Table[1] == "CAP Pumping Plants - Projection of Energy Use - For Waddell Filling Only") {
+    section_cleaned = section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, "Total", "(KWH/AF)->")) %>%
+      mutate(C1 = toupper(C1)) %>%
+      select(-C7, -C9, -C10) %>%
+      mutate(C8 = ifelse(C1 == "(KWH/AF)->", NA, C8))
+    colnames(section_cleaned) = c("Month", 
+                                  stringr::str_c(section[1,2:6], stringr::str_replace_na(section[2,2:6], ""), sep = ""),
+                                  "Total West Energy",
+                                  "Year", "Table")
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
+  }
+  
   if (section$Table[1] == "CAP Pumping Plants - Projection of Water Volumes Pumped") {
     section_cleaned = section %>% 
       filter(C1 %in% c(lower_case_months, upper_case_months, "Total")) %>%
@@ -504,7 +615,17 @@ for (section in all_bottom_sections[4]) {
   }
   
   if (section$Table[1] == "CAP Pumping Plants - Projection of Energy Use") {
-    
+    section_cleaned = section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, "Total", "(KWH/AF)->")) %>%
+      mutate(C1 = toupper(C1)) %>%
+      mutate(C18 = ifelse(C1 == "(KWH/AF)->", NA, C18),
+             C19 = ifelse(C1 == "(KWH/AF)->", NA, C19))
+    colnames(section_cleaned) = c("Month", 
+                                  stringr::str_c(section[1,2:17], stringr::str_replace_na(section[2,2:17], ""), sep = ""),
+                                  "Total System Energy", "Invoice Amount ($1000)",
+                                  "Year", "Table")
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
   }
   
   if (section$Table[1] == "Lake Pleasant Projected EOM Elevation (ft)") {
