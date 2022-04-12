@@ -373,7 +373,7 @@ for (year_tab in 2008:2021) {
   # this is not the best option, but for each table (which shifts position between sheets)
   # set the dimensions box to search based on the location of the chart/section title,
   # and the horizontal offset from the upper left corner of the dimension box
-  SectionDimensions = list(c(18,25, 1),
+  SectionDimensions = list(c(18,25, 2),
                            c(15,23, 2),
                            c(18,23, 3),
                            c(18,25, 3),
@@ -455,10 +455,76 @@ for (section_id in 1:length(SectionHeaders)) {
 }
 
 ## clean the section section semi-manually!
+lower_case_months = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+upper_case_months = c("JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
+                      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+for (section in all_bottom_sections[4]) {
+  if (section$Table[1] == "CAP Pumping Plants - Projection of Water Volumes Pumped") {
+    section_cleaned = section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, "Total")) %>%
+      select(-C18, -C19) %>%
+      mutate(C1 = toupper(C1))
+    colnames(section_cleaned) = c("Month", 
+                                  stringr::str_c(section[1,2:17], stringr::str_replace_na(section[2,2:17], ""), sep = ""),
+                                  "Year", "Table")
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
+  }
+  
+  if (section$Table[1] == "Analysis and breakdown of energy use") {
+    # other leftover headers to include in column names
+    # 						                        SGL to							
+    # West Plant	West Plant	Total West	BLK	   (MLD)	Waddell	Total		Average	Average	Average
+    leftover_header_parts = c(NA, NA, "West Plant", "West Plant", "Total West", 
+                              "SGL to BLK", "(MLD)", "Waddell", "Total", NA, "Average", "Average", "Average")
+    new_names_for_new_cols = stringr::str_squish(stringr::str_c(stringr::str_replace_na(leftover_header_parts, ""),
+                                            stringr::str_replace_na(section[1,2:14], ""), 
+                                            stringr::str_replace_na(section[2,2:14], ""), 
+                                            stringr::str_replace_na(section[3,2:14], ""), sep = " "))
+    new_names_for_new_cols = c("Month", new_names_for_new_cols[c(1:9,11:13)])
+    section_cleaned = section %>% 
+      filter(!is.na(C1)) %>% select(-C11, -C15, -C16) %>%
+      mutate(C1 = toupper(C1))
+    colnames(section_cleaned)[1:13] = new_names_for_new_cols
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)                           
+  }
+  
+  if (section$Table[1] == "CAP Pumping Plants - Average Flow Projection") {
+    section_cleaned = section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, "Total", "(KWH/AF)->")) %>%
+      select(-C18, -C19) %>%
+      mutate(C1 = toupper(C1))
+    colnames(section_cleaned) = c("Month", 
+                                  stringr::str_c(section[1,2:17], stringr::str_replace_na(section[2,2:17], ""), sep = ""),
+                                  "Year", "Table")
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
+  }
+  
+  if (section$Table[1] == "CAP Pumping Plants - Projection of Energy Use") {
+    
+  }
+  
+  if (section$Table[1] == "Lake Pleasant Projected EOM Elevation (ft)") {
+    section_cleaned = section %>% 
+      filter(C1 != "Lake Pleasant Projected EOM Elevation (ft)") %>%
+      mutate(Value = ifelse(is.na(C2), as.numeric(C1), as.numeric(C2)),
+             Month = ifelse(is.na(C2), C2, C1))
+    section_cleaned = section_cleaned %>% 
+      mutate(Month = rep(section$C1[106:117], length.out = nrow(section_cleaned))) %>%
+      select(Table, Year, Month, Value)
+  }
+  
+ # update output tables
+# xlsx::write.xlsx(x = section_cleaned,
+#                  file = "cleaned_annual_forecast_second_section_ALLYEARS.xlsx",
+#                  sheetName = as.character(which(SectionHeaders == section$Table[1])))
+}
 
 
-
-# do some plotting!
+## do some plotting!
 # results by month?
 for (s in unique(all_sections$Section)) {
   plotter = all_sections %>% filter(all_sections$Section == s) %>% 
