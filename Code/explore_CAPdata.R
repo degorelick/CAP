@@ -481,10 +481,61 @@ lower_case_months = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 upper_case_months = c("JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
                       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
-for (section in all_bottom_sections[13]) {
+for (section in all_bottom_sections) {
+  
+  if (section$Table[1] == "Lake Pleasant Projected EOM Elevation (ft)") {
+    section_cleaned = section %>% 
+      filter(C1 != "Lake Pleasant Projected EOM Elevation (ft)") %>%
+      mutate(Value = ifelse(is.na(C2), as.numeric(C1), as.numeric(C2)),
+             Month = ifelse(is.na(C2), C2, C1),
+             Variable = "Elevation (ft)")
+    section_cleaned = section_cleaned %>% 
+      mutate(Month = rep(section$C1[106:117], length.out = nrow(section_cleaned))) %>%
+      select(Table, Year, Month, Variable, Value)
+  }
+  
+  if (section$Table[1] == "CAP Energy Transmission Losses") {
+    additional_row_names_to_keep = as.character(t(section[7:11,1]))
+    names_for_new_cols = as.character(section[6,2:17])
+    section_cleaned = section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, additional_row_names_to_keep, "Total")) %>%
+      mutate(C1 = toupper(C1)) %>% select(-C18,-C19)
+    colnames(section_cleaned) = c("Month", names_for_new_cols, "Year", "Table")
+    section_cleaned = section_cleaned %>%
+      mutate(Month = ifelse(is.na(Total) & Month == "TOTAL", "TOTAL PERCENT LOSS", Month))
+    
+    # make final set
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
+  }
+  
+  if (section$Table[1] == "CAP Energy Transmission Losses (Financial Reconcilation)") {
+    additional_row_names_to_keep = as.character(t(section[7:11,1]))
+    names_for_new_cols = as.character(section[6,2:17])
+    section_cleaned = section %>% 
+      filter(C1 %in% c(lower_case_months, upper_case_months, additional_row_names_to_keep, "Total")) %>%
+      mutate(C1 = toupper(C1)) %>% select(-C18,-C19)
+    colnames(section_cleaned) = c("Month", names_for_new_cols, "Year", "Table")
+    section_cleaned = section_cleaned %>%
+      mutate(Month = ifelse(is.na(Total) & Month == "TOTAL", "TOTAL PERCENT LOSS", Month))
+    
+    # make final set
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
+  }
   
   if (section$Table[1] == "Non-firm Transmission Service") {
+    # need to add months column manually
+    section_cleaned = section %>% 
+      filter(!C1 %in% c("  Non-firm Transmission Service", "          Tucson B Plants only", 
+                        "Energy", "(MWh)", "--------")) %>%
+      filter(!is.na(C1)) %>% 
+      mutate(Month = rep(c(upper_case_months, "TOTAL"), 13))
+    colnames(section_cleaned)[1:2] = c("Energy (MWH)", "Energy Rate ($/MWH)")
     
+    # make final set
+    section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
+    section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
   }
   
   if (section$Table[1] == "CAP Pumping Plants - Daily \"Average\"  Power Schedule") {
@@ -731,6 +782,9 @@ for (section in all_bottom_sections[13]) {
                                   "Year", "Table")
     section_cleaned = reshape2::melt(section_cleaned, id = c("Table", "Year", "Month")) 
     section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
+    
+    # THIS IS THE FIRST TABLE IN THE DATA SET ASSEMBLED, SO INITIALIZE MAIN SET
+    main_power_data_set = section_cleaned
   }
   
   if (section$Table[1] == "Analysis and breakdown of energy use") {
@@ -778,22 +832,18 @@ for (section in all_bottom_sections[13]) {
     section_cleaned = section_cleaned %>% rename(Variable = variable, Value = value)
   }
   
-  if (section$Table[1] == "Lake Pleasant Projected EOM Elevation (ft)") {
-    section_cleaned = section %>% 
-      filter(C1 != "Lake Pleasant Projected EOM Elevation (ft)") %>%
-      mutate(Value = ifelse(is.na(C2), as.numeric(C1), as.numeric(C2)),
-             Month = ifelse(is.na(C2), C2, C1))
-    section_cleaned = section_cleaned %>% 
-      mutate(Month = rep(section$C1[106:117], length.out = nrow(section_cleaned))) %>%
-      select(Table, Year, Month, Value)
-  }
+  # add section to the master set for a final database export and to use for plotting
+  main_power_data_set = rbind(main_power_data_set, section_cleaned)
   
- # update output tables
-# xlsx::write.xlsx(x = section_cleaned,
-#                  file = "cleaned_annual_forecast_second_section_ALLYEARS.xlsx",
-#                  sheetName = as.character(which(SectionHeaders == section$Table[1])))
+  # update output tables
+  # xlsx::write.xlsx(x = section_cleaned,
+  #                  file = "cleaned_annual_forecast_second_section_ALLYEARS.xlsx",
+  #                  sheetName = as.character(which(SectionHeaders == section$Table[1])))
 }
 
+# output complete dataset
+write.table(file = paste("CAP_power_data_2008_to_2021.csv", sep = ""), 
+            x = main_power_data_set, sep = ",", row.names = FALSE)
 
 ## do some plotting!
 # results by month?
