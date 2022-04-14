@@ -463,19 +463,6 @@ for (year_tab in 2008:2021) {
 # print to cleaned spreadsheet
 write.csv(file = paste("CAP_deliveries_by_user_2008_to_2021.csv", sep = ""), x = all_sections)
 
-# print to initial spreadsheet for recordkeeping
-for (section_id in 1:length(SectionHeaders)) {
-  if (section_id == 1) {
-    xlsx::write.xlsx(x = all_bottom_sections[[section_id]], 
-                     file = "cleaned_annual_forecast_second_section_ALLYEARS.xlsx", 
-                     sheetName = as.character(section_id))
-  } else {
-    xlsx::write.xlsx(x = all_bottom_sections[[section_id]], 
-                     file = "cleaned_annual_forecast_second_section_ALLYEARS.xlsx", 
-                     sheetName = as.character(section_id), append = TRUE)
-  }
-}
-
 ## clean the section section semi-manually!
 lower_case_months = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
@@ -834,11 +821,6 @@ for (section in all_bottom_sections) {
   
   # add section to the master set for a final database export and to use for plotting
   main_power_data_set = rbind(main_power_data_set, section_cleaned)
-  
-  # update output tables
-  # xlsx::write.xlsx(x = section_cleaned,
-  #                  file = "cleaned_annual_forecast_second_section_ALLYEARS.xlsx",
-  #                  sheetName = as.character(which(SectionHeaders == section$Table[1])))
 }
 
 # output complete dataset
@@ -950,4 +932,71 @@ temp = ggplot(data = plotter) +
 ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_aggregateintime", ".png", sep = ""), 
        dpi = 400, units = "in", height = 7, width = 15)
 
+## plotting the power data!
+main_power_data_set$Value = as.numeric(main_power_data_set$Value)
+main_power_data_set$Month = fct_relevel(main_power_data_set$Month, 
+                            "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC", 
+                            "TOTAL", "NGS", "PARKER/DAVIS", "INTERTIE", "SRP", "APS", "TOTAL PERCENT LOSS", "(KWH/AF)->")
+for (table_set in unique(main_power_data_set$Table)) {
+  # table_set = unique(main_power_data_set$Table)[1] for testing
+  plotter = main_power_data_set %>% filter(Table == table_set)
+  temp = ggplot(data = plotter) +
+    geom_bar(aes(x = Year, y = Value, fill = Month), stat = "identity", color = NA) + 
+    facet_grid(Month ~ Variable, scales = "free_y") + xlab('Year') + ylab("Value") +
+    theme(axis.text.x = element_text(angle = 90)) +
+    ggtitle(table_set)
+  if (table_set == "Mark Wilmer PP Detailed Daily \"Average\"  Power Schedule") {
+    table_set = "Mark Wilmer PP Daily Avg Power Schedule"
+  }
+  if (table_set == "CAP Pumping Plants - Daily \"Average\"  Power Schedule" ) {
+    table_set = "CAP Pumping Plants - Daily Avg Power Schedule" 
+  }
+  ggsave(paste("visualization/CAP_powerdata_", table_set, ".png", sep = ""), 
+         dpi = 400, units = "in", height = 15, width = 15)
+}
+
+# focus on power uses in space/time and available resources
+
+
+# focus on splits for deliveries/filling waddell
+plotter = main_power_data_set %>% 
+  filter(Table == "CAP Pumping Plants - Projection of Energy Use - For Waddell Filling Only" |
+           Table == "CAP Pumping Plants - Projection of Energy Use - For Deliveries Only") %>%
+  filter(Variable != "Total West Energy") %>%
+  filter(as.character(Month) != "(KWH/AF)->") %>%
+  mutate(Variable = ifelse(Variable == "HAV", "Havasu (Mark Wilmer)", as.character(Variable)),
+         Table = stringr::str_squish(sub(".*-", "", Table))) %>%
+  mutate(Variable = ifelse(Variable == "BSH", "Bouse", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "LHQ", "Little Harquahala", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "HSY", "Hassayampa", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "WADPump", "Waddell", as.character(Variable))) %>%
+  filter(Month != "TOTAL")
+
+colnames(plotter)[4] = "Pumping Plant"
+temp = ggplot(data = plotter) +
+  geom_bar(aes(x = Year, y = Value, fill = `Pumping Plant`), stat = "identity", color = NA) + 
+  facet_grid(. ~ Table, scales = "free_y") + xlab('Year') + ylab("Energy Use (MWH)") +
+  theme(axis.text.x = element_text(angle = 90),
+        legend.background = element_rect(fill = "grey95", color = "black"),
+        legend.position = c(0.98,0.98),
+        legend.justification = c(1,1),) +
+  ggtitle("CAP pumping power needed for deliveries and Lake Pleasant filling")
+ggsave(paste("visualization/CAP_powerdata_waddellpowerneeds.png", sep = ""), 
+       dpi = 400, units = "in", height = 4, width = 8)
+
+#fill_range = scales::seq_gradient_pal("blue", "grey80", "Lab")(seq(0,1,length.out=12))
+mypal = colorRampPalette(RColorBrewer::brewer.pal(12, "PRGn"))
+temp = ggplot(data = plotter) +
+  geom_bar(aes(x = Year, y = Value, fill = Month), stat = "identity", color = NA) + 
+  facet_grid(. ~ Table, scales = "free_y") + xlab('Year') + ylab("Energy Use (MWH)") +
+  theme(axis.text.x = element_text(angle = 90),
+        legend.background = element_rect(fill = "grey95", color = "black"),
+        legend.position = c(0.98,0.98),
+        legend.justification = c(1,1),
+        legend.direction = "horizontal") +
+#  scale_fill_brewer(palette = "PRGn", ) +
+  scale_fill_manual(values = mypal(12)) +
+  ggtitle("CAP pumping power needed for deliveries and Lake Pleasant filling")
+ggsave(paste("visualization/CAP_powerdata_waddellpowerneeds_bymonth.png", sep = ""), 
+       dpi = 400, units = "in", height = 4, width = 8)
 
