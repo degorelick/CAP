@@ -933,6 +933,9 @@ ggsave(paste("visualization/CAP_forecast_actuals_2008_to_2021_section_aggregatei
        dpi = 400, units = "in", height = 7, width = 15)
 
 ## plotting the power data!
+# skip the loop above and read it in from output
+main_power_data_set = read.csv(file = paste("CAP_power_data_2008_to_2021.csv", sep = ""), header = TRUE)
+
 main_power_data_set$Value = as.numeric(main_power_data_set$Value)
 main_power_data_set$Month = fct_relevel(main_power_data_set$Month, 
                             "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC", 
@@ -956,6 +959,97 @@ for (table_set in unique(main_power_data_set$Table)) {
 }
 
 # focus on power uses in space/time and available resources
+#  Total Navajo Energy NE= ED+TL-NG-HE-CP-PO
+plotter = main_power_data_set %>% 
+  filter(Table == "Monthly Projection of CAP Energy Resources (MWH)" |
+           Table == "Analysis and breakdown of energy use") %>%
+  filter(Variable %in% c("West Plant Energy for Waddell (1) (MWH)",
+                         "West Plant Energy for Deliveries(2) (MWH)",
+                         "Waddell Generation Energy (MWH)",
+                         "SGL to BLK Pumping Energy (MWH)",
+                         "(NG) Waddell GEN (MWH)",
+                         "(HE) Total Hoover Energy (MWH)",
+                         "(CP) CAP Purchases (MWH)",
+                         "(PO) Energy Provided by Others (MWH)",
+                         "Total RSVD (MWH)",
+                         "Purchases (Short) Energy (MWH)",
+                         "Sales (Long) Energy (MWH)")) %>%
+  filter(Month != "TOTAL") %>%
+  mutate(Variable = ifelse(Variable == "West Plant Energy for Waddell (1) (MWH)", 
+                           "Waddell Filling", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "West Plant Energy for Deliveries(2) (MWH)",
+                           "Pre-Pleasant Deliveries", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "Waddell Generation Energy (MWH)", 
+                           "Waddell Generation", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "SGL to BLK Pumping Energy (MWH)", 
+                           "Post-Pleasant Pumping", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "(NG) Waddell GEN (MWH)", 
+                           "Waddell Generation", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "(HE) Total Hoover Energy (MWH)", 
+                           "Hoover", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "(CP) CAP Purchases (MWH)", 
+                           "Misc. Purchases", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "(PO) Energy Provided by Others (MWH)", 
+                           "Misc. Purchases", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "Total RSVD (MWH)", 
+                           "Navajo GS", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "Purchases (Short) Energy (MWH)", 
+                           "Market Purchases", as.character(Variable))) %>%
+  mutate(Variable = ifelse(Variable == "Sales (Long) Energy (MWH)", 
+                           "Market Sales", as.character(Variable))) %>%
+  mutate(Value = ifelse(Variable == "Market Sales", -Value, Value))
+
+temp = ggplot(data = plotter) +
+  geom_bar(aes(x = Year, y = Value, fill = Variable), stat = "identity", color = NA) + 
+  facet_grid(. ~ Table, scales = "free_y") + xlab('Year') + ylab("Energy (MWH)") +
+  theme(axis.text.x = element_text(angle = 90),
+        legend.background = element_rect(fill = "grey95", color = "black"),
+        legend.position = c(0.52,0.6),
+        legend.justification = c(0,1),
+        legend.text = element_text(size = 7),
+        legend.key.size = unit(0.35, 'cm'),
+        legend.direction = "vertical",) +
+  ggtitle("CAP pumping power needed for deliveries and Lake Pleasant filling") +
+  guides(fill = guide_legend(ncol = 2))
+ggsave(paste("visualization/CAP_powerdata_energysourcessinks.png", sep = ""), 
+       dpi = 400, units = "in", height = 4, width = 8)
+
+mypal = colorRampPalette(RColorBrewer::brewer.pal(12, "PRGn"))
+temp = ggplot(data = plotter) +
+  geom_bar(aes(x = Year, y = Value, fill = Month), stat = "identity", color = NA) + 
+  facet_grid(. ~ Table, scales = "free_y") + xlab('Year') + ylab("Energy (MWH)") +
+  theme(axis.text.x = element_text(angle = 90),
+        legend.background = element_rect(fill = "grey95", color = "black"),
+        legend.position = c(0.55,0.9),
+        legend.justification = c(0,1),
+        legend.text = element_text(size = 7),
+        legend.key.size = unit(0.35, 'cm'),
+        legend.direction = "vertical",) +
+  ggtitle("CAP pumping power needed for deliveries and Lake Pleasant filling") +
+  guides(fill = guide_legend(ncol = 1)) +
+  scale_fill_manual(values = mypal(12))
+ggsave(paste("visualization/CAP_powerdata_energysourcessinks_bymonth.png", sep = ""), 
+       dpi = 400, units = "in", height = 4, width = 8)
+
+# just check out market energy purchases and sales
+plotter = plotter %>% filter(Variable %in% c("Market Purchases", "Market Sales")) %>%
+  mutate(Value = ifelse(Variable == "Market Sales", -Value, Value))
+mypal = colorRampPalette(RColorBrewer::brewer.pal(12, "PRGn"))
+temp = ggplot(data = plotter) +
+  geom_bar(aes(x = Year, y = Value, fill = Month), stat = "identity", color = NA) + 
+  facet_grid(. ~ Variable, scales = "free_y") + xlab('Year') + ylab("Energy (MWH)") +
+  theme(axis.text.x = element_text(angle = 90),
+        legend.background = element_rect(fill = "grey95", color = "black"),
+        legend.position = c(0.98,0.98),
+        legend.justification = c(1,1),
+        legend.text = element_text(size = 7),
+        legend.key.size = unit(0.35, 'cm'),
+        legend.direction = "vertical",) +
+  ggtitle("CAP historic market power purchases and sales") +
+  guides(fill = guide_legend(ncol = 1)) +
+  scale_fill_manual(values = mypal(12))
+ggsave(paste("visualization/CAP_powerdata_purchasessales_bymonth.png", sep = ""), 
+       dpi = 400, units = "in", height = 4, width = 8)
 
 
 # focus on splits for deliveries/filling waddell
