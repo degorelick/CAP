@@ -1175,7 +1175,37 @@ write.table(file = paste("CAP_power_purchase_data_2022.csv", sep = ""),
             x = all_data, sep = ",", row.names = FALSE)
 
 # do some plotting!
+all_data$Month = fct_relevel(all_data$Month, 
+                             "JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
+                             "JUL", "AUG", "SEP", "OCT", "NOV", "DEC", 
+                             "TOTAL")
 
+plotter = all_data %>% filter(Month != "TOTAL") %>%
+  filter(variable == "Unit Price ($/MWH)")
+temp = ggplot(data = plotter) +
+  geom_bar(aes(y = as.numeric(value), x = Month, fill = Use), stat = "identity", color = NA, position = "dodge") + 
+  facet_grid(variable ~ Product, scales = "free_y") + ylab('Unit Price ($/MWH)') + xlab("Month") +
+  theme(axis.text.x = element_text(angle = 90),
+        strip.background.y = element_blank(),
+        strip.text.y = element_blank(),
+        legend.background = element_rect(fill = "grey95", color = "black"),
+        legend.position = c(0.01,0.98),
+        legend.justification = c(0,1),
+        legend.text = element_text(size = 8),
+        legend.key.size = unit(0.4, 'cm'),
+        legend.direction = "vertical") +
+  ggtitle("CAP: Unit Prices of Power, Projected for 2022")
+ggsave(paste("visualization/CAP_power_purchases_2022_unitprices", ".png", sep = ""), 
+       dpi = 400, units = "in", height = 3, width = 9)
 
-
+plotter = all_data %>% filter(Month != "TOTAL") %>%
+  mutate(value = ifelse(Use == "Sell", -1*as.numeric(value), as.numeric(value))) %>%
+  filter(variable != "Unit Price ($/MWH)")
+temp = ggplot(data = plotter) +
+  geom_bar(aes(y = as.numeric(value), x = Month, fill = Product), stat = "identity", color = NA) + 
+  facet_grid(variable ~ ., scales = "free_y") + ylab('') + xlab("Month") +
+  theme(axis.text.x = element_text(angle = 90)) + 
+  ggtitle(label = "CAP: Planned 2022 Power Resources, \nPurchases, and Sales")
+ggsave(paste("visualization/CAP_power_purchases_2022_stacks", ".png", sep = ""), 
+       dpi = 400, units = "in", height = 7, width = 7)
 
