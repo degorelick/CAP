@@ -473,6 +473,113 @@ for (year_tab in 2008:2021) {
 # print to cleaned spreadsheet
 write.csv(file = paste("CAP_deliveries_by_user_2008_to_2021.csv", sep = ""), x = all_sections)
 
+## Aug 2022: make separate loop to capture overall deliveries 
+#   and historical diversion data for CAPFEWS model inputs
+for (year_tab in 2008:2021) {
+  # read in year tab
+  extra_tab_value = ""; if (year_tab >= 2020) {extra_tab_value = " T0"}
+  CAP_forecast = readxl::read_xlsx(path = "forecast Historical 2008 to 2021.xlsx", 
+                                   sheet = paste(as.character(year_tab), extra_tab_value, sep = ""), 
+                                   trim_ws = FALSE)
+  print(paste(as.character(year_tab), extra_tab_value, sep = ""))
+  
+  # standardize basic column headers so we can be consistent between spreadsheets
+  n_columns_in_sheet = ncol(CAP_forecast)
+  sheet_columns_base_names = paste("C", as.character(c(1:n_columns_in_sheet)), sep="")
+  colnames(CAP_forecast) = sheet_columns_base_names
+  
+  # extract commonly-formatted data
+  # first ~80% of each sheet has consistent formatting - last chunk of 
+  # forecast data is a set titled TOTAL DELIVERIES BY CLASS
+  # that I will use as a flag to split up the data and read it
+  # consistently between tabs
+  final_first_set_row = which(stringr::str_squish(CAP_forecast$C1) == "COLORADO RIVER ACTUAL")[1]
+  SectionHeaders = c("TOTAL CUSTOMER DELIVERIES")
+  ColumnNames = c("Variable", 
+                  "Jan", "Feb", "Mar", "Q1", 
+                  "Apr", "May", "Jun", "Q2", 
+                  "Jul", "Aug", "Sep", "Q3", 
+                  "Oct", "Nov", "Dec", "Q4", "Total",
+                  "Empty1", "Physical Turnout", "Empty2")[1:min(n_columns_in_sheet,21)]
+  
+  # create master table to hold all years
+  if (year_tab == 2008) {
+    all_sections = CAP_forecast[1,] %>% 
+      rename_at(vars(colnames(CAP_forecast)[1:length(ColumnNames)]), function(x) ColumnNames) %>% 
+      select(-grep("Empty", ColumnNames))
+    all_sections = all_sections %>%
+      select(-grep("C", colnames(all_sections))) %>%
+      mutate(Group = NA, Subgroup = NA, Name = NA, Section = NA, Year = NA) %>% filter(!is.na(Jan))
+  }
+  
+  ## run code for first half of data
+  # for debugging: section_name = SectionHeaders[4] is Hassayampa PP
+  for (section_name in SectionHeaders) {
+    # set bounds to read in each section of code
+    section_start_row = which(CAP_forecast$C1 == section_name)
+    section_end_row = min(which(CAP_forecast$C1 %in% SectionHeaders)[
+      which(CAP_forecast$C1 %in% SectionHeaders) > section_start_row], final_first_set_row+1, na.rm = TRUE)
+    
+    # read in and organize
+    section = CAP_forecast[(section_start_row):(section_end_row-1),] %>%
+      rename_at(vars(colnames(CAP_forecast)[1:length(ColumnNames)]), function(x) ColumnNames) %>% 
+      select(-grep("Empty", ColumnNames))
+    section = section %>%
+      select(-grep("C", colnames(section))) %>%
+      mutate(Group = NA, Subgroup = NA, Name = NA, Section = stringr::str_squish(section_name), Year = year_tab)
+    
+    # based on indentations, sort into subcategory headers
+    temporary_group = NA; temporary_subgroup = NA; temporary_name = NA
+    for (row in 1:nrow(section)) {
+      if (is.na(section$Variable[row])) {next}
+      
+      # appears to be a typo in this particular region, causing
+      # all the ag use to be transcribed under "DROUGHT" use
+      if (section_name == "SALT GILA PP" & section$Variable[row] == "DROUGHT") {
+        section$Variable[row] = "    Drought"
+      }
+      
+      # also, there is a case where some temporary rows are not indented as necessary 
+      # and this disrupts how the following rows are classified
+      if (section$Variable[row] == "Temporary (-) for reduced deliveries (m&i)") {
+        section$Variable[row] = "           Temporary (-) for reduced deliveries"
+      } 
+      if (section$Variable[row] == "Temporary Reduced M&I demand  (-) ") {
+        section$Variable[row] = "           Temporary (-) for reduced deliveries"
+      }
+      if (section$Variable[row] == "Temporary Indirect Reduced demand (-)") {
+        section$Variable[row] = "           Temporary (-) for reduced deliveries"
+      }
+      if (section$Variable[row] == "Temporary (-) for reduced deliveries (ag)") {
+        section$Variable[row] = "           Temporary (-) for reduced deliveries"
+      }
+      
+      # longest indentations are names of users? more than 5 spaces of indentation
+      if (startsWith(stringr::str_squish(section$Variable[row]), "TOTAL")) {
+        temporary_group = section$Variable[row]; temporary_subgroup = NA; temporary_name = NA
+      } else if (startsWith(section$Variable[row], "      ")) {
+        temporary_name = section$Variable[row]
+      } else if (startsWith(section$Variable[row], " ")) {
+        temporary_subgroup = section$Variable[row]; temporary_name = NA
+      } else {
+        temporary_group = section$Variable[row]; temporary_subgroup = NA; temporary_name = NA
+      }
+      section$Group[row] = stringr::str_squish(temporary_group)
+      section$Subgroup[row] = stringr::str_squish(temporary_subgroup)
+      section$Name[row] = stringr::str_squish(temporary_name)
+    }
+    
+    # clean up by dropping empty rows (mostly rows that just had headers in original file)
+    # and add to larger master set
+    section_clean = section %>% filter(!is.na(Jan) | !is.na(Total))
+    all_sections = rbind(all_sections, section_clean)
+    
+  }
+}
+
+# print to cleaned spreadsheet
+write.csv(file = paste("CAP_diversions_summary_2008_to_2021.csv", sep = ""), x = all_sections)
+
 ## clean the section section semi-manually!
 lower_case_months = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
