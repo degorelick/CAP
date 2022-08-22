@@ -82,80 +82,148 @@ Historical_CAPCanalLosses_Organized = Historical_CAPDiversion %>%
   mutate(datetime = lubridate::make_datetime(year = Year, month = Month)) %>%
   select(datetime, CAP_los)
 
-#   a. Ak-Chin IC
-#   b. AWBA
-#   c. CAGRD
-#   d. CAIDD
-#   e. Mesa
-#   f. Peoria
-#   g. Phoenix
-#   h. Scottsdale
-#   i. Tucson
-#   j. Gila River IC
-#   k. MSIDD
-#   l. San Carlos Apache Nation
-#   m. Tohono O'odham Indian Nation
-#   n. Gilbert
 
 ### -----------------------------------------------------
 ## Collect major contractor historical deliveries
 ##  and organize by priority, lease, banking/storage
+##  (initially just tracked top-14 historical largest,
+##   then added others that show up consistently)
 major_contractors = list(
-  c("Ak-Chin", "ACIC", "Ak-Chin IC", "Ak Chin Indian Community", "Ak Chin IC"),
+  c("Ak-Chin Indian Community", "Ak-Chin", "ACIC", "Ak-Chin IC", "Ak Chin Indian Community", "Ak Chin IC", "Ak Chin Farm"),
   c("AWBA", "Arizona Water Banking Authority"),
   c("CAIDD", "Central Arizona IDD", "Central AZ IDD", "CAID", "Central Arizona ID", "Central AZ ID"),
   c("CAGRD", "Central Arizona GRD"),
-  c("GRIC", "Gila River IC", "Gila River", "Gila River Indian Community"),
   c("Gilbert", "Town of Gilbert"),
+  c("Gila River Indian Community", "GRIC", "Gila River IC", "Gila River"),
   c("Mesa", "Mesa, City of"),
   c("MSIDD", "Maricopa Stanfield IDD", "Maricopa-Stanfield", "Maricopa Stanfield"),
   c("Peoria", "City of Peoria"),
   c("Phoenix", "Phoenix, City of", "City of Phoenix", "PHX"),
-  c("Tohono", "Tohono O'odham Indian Nation", "TOIC", "TOIN", "Tohono IC"),
-  c("Tucson", "Tucson, City of"),
-  c("SCAT", "San Carlos Apache Nation", "SCAN", "SCIC", "San Carlos IC", "San Carlos AT", "San Carlos"),
+  c("San Carlos Apache Nation", "SCAT", "SCAN", "SCIC", "San Carlos IC", "San Carlos AT", "San Carlos"),
   c("Scottsdale", "City of Scottsdale"),
-  c("OTHER UPPER CANAL DELIVERIES"), # determined by canal segment, remaining deliveries
-  c("OTHER LOWER CANAL DELIVERIES") # determined by canal segment, remaining deliveries
+  c("Tohono Oodham Indian Nation", "Tohono O'odham Indian Nation", "Tohono", "TOIC", "TOIN", "Tohono IC"),
+  c("Tucson", "Tucson, City of"),
+  
+  c("SRPMIC", "Salt River Pima"),
+  c("Chandler"),
+  c("Glendale", "Glendale, City of"),
+  c("Tempe"),
+  c("HIDD", "HID", "Hohokam"),
+  c("HVIDD", "HVID", "Harquahala Valley IDD", "Harquahala Valley ID"),
+  c("San Carlos IDD", "SCIDD"),
+  c("Welton-Mohawk", "Wellton-Mohawk"),
+  c("CMID", "CMIDD", "Cortaro Marana Irrigation District"),
+  c("Tonopah ID", "TID", "TIDD"),
+  c("MWD", "Maricopa Water District"),
+  c("NMIDD", "New Magma IDD", "New Magma", "NMID")
 )
 
-c("Avondale"),
-c("Buckeye"),
-c("Bureau of Reclamation", "BOR"),
-c("BKW Farms", "BKW"),
-c("Chandler"),
-c("Glendale", "Glendale, City of"),
-c("Arizona Water Co."),
-c("ADOT", "Arizona Department of Transportation", "Arizona State Land Dept"),
-c("Tempe"),
-c("SRPMIC"),
-c("SRP", "Salt River Project"),
-c("HIDD", "HID", "Hohokam"),
-c("HVIDD", "HVID", "Harquahala Valley IDD", "Harquahala Valley ID"),
-c("San Carlos IDD", "SCIDD"),
-c("Welton-Mohawk", "Wellton-Mohawk"),
-c("CMID", "CMIDD", "Cortaro Marana Irrigation District"),
-c("Tonopah ID", "TID", "TIDD"),
-c("MWD", "Maricopa Water District"),
-c("NMIDD", "New Magma IDD", "New Magma", "NMID"),
-c("Goodyear"),
-c("Metro Water", "Metro"),
-c("Marana"),
-c("Oro Valley"),
-c("RWCD", "Roosevelt"),
-c("Spanish Trail"),
-c("Surprise"),
-c("QCID", "Queen Creek ID", "Queen Creek Irrigation District"),
-c("Tonto Hills"),
-c("EPCOR"),
-c("Eloy"),
-c("El Mirage"),
-c("Chaparral", "Chaparral City WC"),
-c("Carefree WC", "Carefree"),
-c("Cave Creek WC", "Cave Creek"),
-c("ASARCO"),
+check_totals_in_2008 = 0; check_totals_in_2021 = 0
+all_contractors = c(); all_leases = c()
+for (user in major_contractors) {
+  # collect deliveries for each subcontractor
+  contractor_deliveries = Historical_Deliveries[as.logical(rowSums(sapply(user, grepl, Historical_Deliveries$Variable))),]
+  
+  # also grab leases to check out later
+  contractor_leases = contractor_deliveries[as.logical(rowSums(sapply(c("lease", "Lease"), grepl, contractor_deliveries$Variable))),]
+  
+  # and aggregate deliveries by priority type and month/year
+  # and account for outliers in the data as we go
+  contractor_deliveries_aggregated = contractor_deliveries %>% 
+    mutate(Group = ifelse(Group == "Arizona Water Co. (Coolidge) W/CAIDD" |
+                            Group == "Maricopa Water District Lake Water(**)(@)" |
+                            Group == "Maricopa Water District Lake Water (MWD**)" |
+                            Group == "Maricopa Water District Lake Water (**)", "MUNICIPAL & INDUSTRIAL:", Group)) %>% 
+    mutate(Group = ifelse(Group == "RECHARGE1:", "RECHARGE:", Group)) %>% 
+    mutate(Group = ifelse(Group == "Salt River Project XS ($XX/AF) w/CAIDD" |
+                            Group == "Salt River Project XS ($XX/AF) w/MSIDD" |
+                            Group == "Salt River Project XS ($10/AF) w/MSIDD" |
+                            Group == "Salt River Project XS ($10/AF) w/CAIDD" |
+                            Group == "Salt River Project XS ($48/AF) w/MSIDD" |
+                            Group == "Salt River Project XS w/CAIDD" |
+                            Group == "Salt River Project XS w/MSIDD", "EXCESS:", Group)) %>% 
+    mutate(Group = ifelse(Group == "Ag Pool Redistribution/Remarket (+/-)", "AGRICULTURAL:", Group)) %>% 
+    filter(Group != "FLOW AT CS19 (CFS)") %>%
+    group_by(Year, Group) %>% 
+    summarise(across(c(Jan:Mar, Apr:Jun, Jul:Sep, Oct:Dec), function(x) {sum(as.numeric(as.character(x)), na.rm = TRUE)})) %>%
+    mutate(Subcontractor = user[1])
+    
+  # add to full list holding all the contractors (and leases)
+  all_contractors = rbind(all_contractors, contractor_deliveries_aggregated)
+  all_leases = rbind(all_leases, contractor_leases)
+    
+  # sanity check - do we need to account for more users specifically?
+  check_totals_in_2008 = check_totals_in_2008 + 
+    sum(as.numeric(as.character(contractor_deliveries$Total[which(contractor_deliveries$Year == 2008)])), na.rm = TRUE)
+  check_totals_in_2021 = check_totals_in_2021 + 
+    sum(as.numeric(as.character(contractor_deliveries$Total[which(contractor_deliveries$Year == 2021)])), na.rm = TRUE)
+}
 
-Historical_Deliveries_ByContractor_ByPriorityClass_Organized
+# what fraction of total CAP deliveries in 2008 are to these 14 major contractors + others? in 2021?
+# because of the double-counting of many lease or exchanges, these values are inflated
+print(paste("Fraction of deliveries to top 14+ contractors in 2008: ", 
+            as.character(check_totals_in_2008 / 
+                           sum(Historical_CAPDiversion_Organized$CAP_div[
+                             which(format(Historical_CAPDiversion_Organized$datetime, format = "%Y") == "2008")])), sep = ""))
+print(paste("Fraction of deliveries to top 14+ contractors in 2021: ", 
+            as.character(check_totals_in_2021 / 
+                           sum(Historical_CAPDiversion_Organized$CAP_div[
+                             which(format(Historical_CAPDiversion_Organized$datetime, format = "%Y") == "2021")])), sep = ""))
+
+# clean up full sets, make them "long" then organize
+ac_long = all_contractors %>% 
+  pivot_longer(cols = -c('Year', 'Subcontractor', 'Group'), names_to = 'Month', values_to = 'del') %>%
+  mutate(Month = match(Month, month.abb)) %>%
+  mutate(datetime = lubridate::make_datetime(year = Year, month = Month)) %>% ungroup() %>%
+  select(datetime, Group, Subcontractor, del)
+
+Historical_Deliveries_ByContractor_ByPriorityClass_Organized = ac_long %>% 
+  mutate(del = ifelse(del == 0, NA, del)) %>%
+  pivot_wider(names_from = c(Subcontractor, Group), values_from = del)
+
+# clean up column headers for readability in the code
+colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
+  sub(":", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
+colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
+  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
+colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
+  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
+colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
+  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
+colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
+  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
+colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
+  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
+colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
+  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
+
+
+## check other contractors, do they have many leases, big fraction of deliveries?
+minor_contractors = list(
+  c("Avondale"),
+  c("Buckeye"),
+  c("Bureau of Reclamation", "BOR"),
+  c("BKW Farms", "BKW"),
+  c("Arizona Water Co."),
+  c("ADOT", "Arizona Department of Transportation", "Arizona State Land Dept"),
+  c("SRP", "Salt River Project"),
+  c("Goodyear"),
+  c("Metro Water", "Metro"),
+  c("Marana"),
+  c("Oro Valley"),
+  c("RWCD", "Roosevelt"),
+  c("Spanish Trail"),
+  c("Surprise"),
+  c("QCID", "Queen Creek ID", "Queen Creek Irrigation District"),
+  c("Tonto Hills"),
+  c("EPCOR"),
+  c("Eloy"),
+  c("El Mirage"),
+  c("Chaparral", "Chaparral City WC"),
+  c("Carefree WC", "Carefree"),
+  c("Cave Creek WC", "Cave Creek"),
+  c("ASARCO")
+)
 
 
 ### -----------------------------------------------------
