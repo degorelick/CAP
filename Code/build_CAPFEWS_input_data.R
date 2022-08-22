@@ -198,6 +198,26 @@ colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) =
   sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
 
 
+## manage leases - who gives them and who gets them, sorted by subcontractor and priority group
+# leases can only be given from Tribal users to others, so will need to identify
+#   ORIGINATORS (tribes) vs RECIPIENTS (M&I, usually) within a loop
+lease_originators = list(
+  c("SRPMIC"), c("SCAT"), c("FMYN", "Fort McDowell"), c("GRIC"), c("Ak-Chin"))
+lease_recipients = list(
+  c("Tucson", "SAVSARP", "CAVSARP"), c("CAIDD"), c("CAGRD"), c("Gilbert"))
+
+all_leases
+
+
+
+
+
+
+
+
+
+
+
 ## check other contractors, do they have many leases, big fraction of deliveries?
 minor_contractors = list(
   c("Avondale"),
@@ -216,6 +236,7 @@ minor_contractors = list(
   c("Surprise"),
   c("QCID", "Queen Creek ID", "Queen Creek Irrigation District"),
   c("Tonto Hills"),
+  c("FMYN", "Fort McDowell Yavapai Nation", "Yavapai"),
   c("EPCOR"),
   c("Eloy"),
   c("El Mirage"),
