@@ -6,7 +6,7 @@
 
 rm(list=ls()) # clear memory
 setwd('C:/Users/dgorelic/OneDrive - University of North Carolina at Chapel Hill/UNC/Research/IM3/CAP/Data') # set directory
-library(tidyverse)
+library(tidyverse); options(dplyr.summarise.inform = FALSE)
 
 ### -----------------------------------------------------
 ## Read in all the data we need, some of which has
@@ -30,8 +30,8 @@ CRSS_ShortageSummary = readxl::read_xlsx("PNNL.xlsx", sheet = "Shortage")
 
 ##    PNNL.xlsx - CRSS Mead elevation, CAP diversion request traces, 2023-2054 by month
 ##      can use averages like 24MS for initial tests?
-CRSS_CAPDiversion_Organized
-CRSS_MeadElevation_Organized
+CRSS_CAPDiversion_Organized = NA
+CRSS_MeadElevation_Organized = NA
 
 ##    forecast Historical 2008 to 2021.xlsx - top table colorado river diversions, by month
 ##    (im collecting this with some new code, but CO River diversions is the same as
@@ -118,15 +118,30 @@ major_contractors = list(
   c("NMIDD", "New Magma IDD", "New Magma", "NMID")
 )
 
+
+
 check_totals_in_2008 = 0; check_totals_in_2021 = 0
-all_contractors = c(); all_leases = c()
+all_contractors = c()
 for (user in major_contractors) {
   # collect deliveries for each subcontractor
-  contractor_deliveries = Historical_Deliveries[as.logical(rowSums(sapply(user, grepl, Historical_Deliveries$Variable))),]
+  contractor_deliveries = Historical_Deliveries[
+    as.logical(rowSums(sapply(user, grepl, Historical_Deliveries$Variable))) |
+      as.logical(rowSums(sapply(user, grepl, Historical_Deliveries$Subgroup))),]
   
-  # also grab leases to check out later
-  contractor_leases = contractor_deliveries[as.logical(rowSums(sapply(c("lease", "Lease"), grepl, contractor_deliveries$Variable))),]
+  # to ensure we aren't counting columns we don't want, check for 
+  # unexpected values and clean them
+  # print(unique(contractor_deliveries$Group))
+  # print(unique(contractor_deliveries$Section))
+  contractor_deliveries = contractor_deliveries %>%
+    filter(Group != "FLOW AT CS19 (CFS)") %>%
+    filter(Section != "TOTAL SYSTEM DELIVERIES") %>%
+    filter(Total != 0) %>% mutate(Total = as.numeric(as.character(Total)))
   
+  # REMOVE LEASE, EXCHANGE, SETTLEMENT, ASSIGNMENT COLUMNS FROM THE DELIVERY DATA
+  contractor_deliveries = contractor_deliveries[!as.logical(rowSums(sapply(
+    c("lease", "Lease", "settlement", "Settlement", "Exchange", "exchange",
+      "Assignment", "assignment"), grepl, contractor_deliveries$Variable))),]
+   
   # and aggregate deliveries by priority type and month/year
   # and account for outliers in the data as we go
   contractor_deliveries_aggregated = contractor_deliveries %>% 
@@ -143,14 +158,12 @@ for (user in major_contractors) {
                             Group == "Salt River Project XS w/CAIDD" |
                             Group == "Salt River Project XS w/MSIDD", "EXCESS:", Group)) %>% 
     mutate(Group = ifelse(Group == "Ag Pool Redistribution/Remarket (+/-)", "AGRICULTURAL:", Group)) %>% 
-    filter(Group != "FLOW AT CS19 (CFS)") %>%
     group_by(Year, Group) %>% 
     summarise(across(c(Jan:Mar, Apr:Jun, Jul:Sep, Oct:Dec), function(x) {sum(as.numeric(as.character(x)), na.rm = TRUE)})) %>%
     mutate(Subcontractor = user[1])
     
-  # add to full list holding all the contractors (and leases)
+  # add to full list holding all the contractors
   all_contractors = rbind(all_contractors, contractor_deliveries_aggregated)
-  all_leases = rbind(all_leases, contractor_leases)
     
   # sanity check - do we need to account for more users specifically?
   check_totals_in_2008 = check_totals_in_2008 + 
@@ -201,13 +214,49 @@ colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) =
 ## manage leases - who gives them and who gets them, sorted by subcontractor and priority group
 # leases can only be given from Tribal users to others, so will need to identify
 #   ORIGINATORS (tribes) vs RECIPIENTS (M&I, usually) within a loop
+all_leases = Historical_Deliveries[as.logical(rowSums(sapply(
+  c("lease", "Lease", "settlement", "Settlement", "Exchange", "exchange",
+    "Assignment", "assignment"), grepl, Historical_Deliveries$Variable))),]
+all_leases = all_leases %>% filter(Total != 0)
+
 lease_originators = list(
   c("SRPMIC"), c("SCAT"), c("FMYN", "Fort McDowell"), c("GRIC"), c("Ak-Chin"))
 lease_recipients = list(
-  c("Tucson", "SAVSARP", "CAVSARP"), c("CAIDD"), c("CAGRD"), c("Gilbert"))
+  c("Tucson", "SAVSARP", "CAVSARP"), c("CAIDD"), c("CAGRD"), c("Gilbert"),
+  c("OTHERS", minor_contractors))
 
-all_leases
-
+GW_AMAs = list(
+  c("Phoenix AMA",
+      "GRUSP",
+      "AFRP", "Agua Fria",
+      "HRF", "Hassayampa RF",
+      "HMRP", "Hieroglyphic",
+      "TDRP", "Tonopah",
+      "SMRP", "Superstition",
+      "CHCID", "Chandler ID",
+      "MWD", "Maricopa Water District",
+      "NMIDD", "New Magma",
+      "QCIDD", "Queen Creek",
+      "SRP", "Salt River Project", # need to include exception to remove SRPMIC
+      "RWCD", "Roosevelt",
+      "TID", "Tonopah", # is it the RP or ID? will have to screen for this
+      "PHX", "GRIIDD", "GRIC GSF", "Gila River Indian IDD"),
+  c("Pinal AMA", 
+      "CAIDD", 
+      "HIDD", "Hohokam", 
+      "MSIDD", 
+      "GRIIDD", "GRIC GSF", "Gila River Indian IDD"),
+  c("Tucson AMA", 
+      "ASARCO", 
+      "CMID", 
+      "Kai Farms", 
+      "BKW Farms", 
+      "PMRP", "Pima Mine Road RP", 
+      "LSCRP", "Lower Santa Cruz RP", 
+      "SAVSARP", 
+      "CAVSARP",
+      "AVRP", "Avra Valley RP"),
+)
 
 
 
@@ -247,13 +296,37 @@ minor_contractors = list(
 )
 
 
+
+
 ### -----------------------------------------------------
 ## Collect historic water delivery rate components
 ##  and reconciliation rate updates
-Historical_Rates_Organized
+Historical_Rates_Organized = Historical_Rates[
+    as.logical(rowSums(sapply(c("rate", "Rate"), grepl, Historical_Rates$Group))),]
+colnames(Historical_Rates_Organized)[2:11] = seq(2011,2020,1) 
 
+# key for rate components:
+#  a) Total = Total Energy + Fixed OM&R
+#   b) Fixed OM&R = Fixed O&M + CIP (Big R) + Rate Stabilization
+#   c) Total Energy = Pumping + Decommissioning
+Historical_Rates_Organized$Variable =   c("FixedOM","CIP","RateStabilization","FixedOMR", 
+                                          "Pumping","Decommissioning", "TotalEnergy", "Total", 
+                                          "FixedOM","CIP","RateStabilization","FixedOMR", 
+                                          "Pumping","Decommissioning", "TotalEnergy", "Total")                              
+Historical_Rates_Organized$Group = c(rep("Budgeted", 8), rep("Reconciliation", 8))
+
+Historical_Rates_Organized = Historical_Rates_Organized %>% 
+  pivot_longer(cols = -c('Variable', 'Group'), names_to = 'Year', values_to = 'rate') %>%
+  mutate(datetime = lubridate::make_datetime(year = as.numeric(Year))) %>%
+  select(datetime, Group, Variable, rate) %>%
+  pivot_wider(names_from = c(Variable, Group), values_from = rate)
 
 ### -----------------------------------------------------
 ## Collect historic power market energy prices
-##  and long-term PPA information
-Historical_PumpingEnergy_Organized
+##  and pumped water quantities 
+Historical_PumpingEnergy_Organized = Historical_PowerUse %>%
+  filter(Table == "CAP Pumping Plants - Projection of Energy Use - For Waddell Filling Only" |
+           Table == "CAP Pumping Plants - Projection of Energy Use - For Deliveries Only" |
+           Table == "CAP Pumping Plants - Projection of Energy Use")
+
+  
