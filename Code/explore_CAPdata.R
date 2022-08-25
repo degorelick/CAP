@@ -1698,3 +1698,104 @@ ggsave(paste("visualization/CAP_top_users", ".png", sep = ""),
 
 
 
+
+### -----------------------------------------------------
+##  Read in 2016-2021 CAP delivery summary statistics
+##    organize for CAPFEWS input and do some plotting
+
+# spreadsheets of deliveries are divided into these categories
+# of tables, each ending with "Total" in the last row
+section_titles = list(
+  c("Summary"), 
+  c("Excess - Other Excess"), 
+  c("Excess - Ag Pool"), 
+  c("Federal On-Res"), 
+  c("Federal Off-Res"),
+  c("M&I Subcontract")
+)
+
+# collect deliveries
+all_months = c(); all_annualstats = c()
+for (year in seq(2016,2021,1)) {
+  # read in the data for a given year
+  delivery = readxl::read_xlsx(paste(as.character(year), "_Year to Date by Contract Type.xlsx", sep = ""))
+
+  # normalize the column names
+  n_columns_in_sheet = ncol(delivery)
+  sheet_columns_base_names = paste("C", as.character(c(1:n_columns_in_sheet)), sep="")
+  colnames(delivery) = sheet_columns_base_names
+  n_columns_in_sheet = ncol(recharge)
+  sheet_columns_base_names = paste("C", as.character(c(1:n_columns_in_sheet)), sep="")
+  colnames(recharge) = sheet_columns_base_names
+  
+  # clean the file - extract data and collate 
+  for (title in section_titles) {
+    # what rows are this table on?
+    table_start = max(which(stringr::str_squish(delivery$C1) == title[1]))
+    potential_end_rows = which(stringr::str_squish(delivery$C1) == "Total" & 
+                                 stringr::str_squish(delivery$C1) > title[1])
+    table_end = min(potential_end_rows[which((potential_end_rows) > table_start)])
+    
+    # extract table, add year and table title columns
+    section = delivery[(table_start+2):table_end,]
+    colnames(section) = delivery[table_start+1,]
+    colnames(section)[1:3] = c("User", "Partner", "Agreement")
+    section$Year = year
+    section$Group = title[1]
+    section$Data = "Delivery"
+    
+    # check that the rows with NA on the sheet 
+    # are filled in with names where necessary
+    for (row in c(1:nrow(section))) {
+      # if a given row is missing a value
+      if (is.na(section$User[row])) {
+        # find the most recent non-NA row
+        rows_with_value = which(!is.na(section$User))
+        last_row_with_value = max(rows_with_value[rows_with_value < row])
+        
+        # overwrite
+        section$User[row] = section$User[last_row_with_value]
+      }
+      
+      # repeat for sub-names
+      if (any(!is.na(section$Partner))) {
+        if (is.na(section$Partner[row])) {
+          # find the most recent non-NA row
+          rows_with_value = which(!is.na(section$Partner))
+          last_row_with_value = max(rows_with_value[rows_with_value < row])
+          
+          # overwrite UNLESS current row is Total row
+          if (section$User[row] != "Total") {
+            section$Partner[row] = section$Partner[last_row_with_value]
+          }
+        }
+      }
+    }
+    
+    # separate into monthly and annual data
+    section_bymonth = section[,c(1:(ncol(section)-6),(ncol(section)-2):ncol(section))]
+    section_annualstats = section[,c(1:3,(ncol(section)-5):ncol(section))]
+    
+    # make long format and add to overall dataset
+    s_month_long = section_bymonth %>%
+      pivot_longer(cols = Jan:Dec, names_to = 'Month', values_to = 'deliveries')
+    s_annual_long = section_annualstats %>%
+      pivot_longer(cols = c(Delivered, Scheduled, Remaining), names_to = 'Variable', values_to = 'deliveries')
+    
+    # collect for every year and table
+    all_months = rbind(all_months, s_month_long)
+    all_annualstats = rbind(all_annualstats, s_annual_long)
+  }
+}
+
+# export results
+write.table(all_months, "CAP_deliveries_byuser_monthly_2016_to_2021.csv", 
+            row.names = FALSE, col.names = TRUE, sep = ",")
+write.table(all_annualstats, "CAP_deliveries_byuser_summary_2016_to_2021.csv", 
+            row.names = FALSE, col.names = TRUE, sep = ",")
+
+# collect deliveries by recharge facility
+recharge = readxl::read_xlsx(paste(as.character(year), "_Deliveries by Recharge Facility.xlsx", sep = ""))
+
+
+
