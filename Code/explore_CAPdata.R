@@ -1724,9 +1724,6 @@ for (year in seq(2016,2021,1)) {
   n_columns_in_sheet = ncol(delivery)
   sheet_columns_base_names = paste("C", as.character(c(1:n_columns_in_sheet)), sep="")
   colnames(delivery) = sheet_columns_base_names
-  n_columns_in_sheet = ncol(recharge)
-  sheet_columns_base_names = paste("C", as.character(c(1:n_columns_in_sheet)), sep="")
-  colnames(recharge) = sheet_columns_base_names
   
   # clean the file - extract data and collate 
   for (title in section_titles) {
@@ -1794,8 +1791,81 @@ write.table(all_months, "CAP_deliveries_byuser_monthly_2016_to_2021.csv",
 write.table(all_annualstats, "CAP_deliveries_byuser_summary_2016_to_2021.csv", 
             row.names = FALSE, col.names = TRUE, sep = ",")
 
-# collect deliveries by recharge facility
-recharge = readxl::read_xlsx(paste(as.character(year), "_Deliveries by Recharge Facility.xlsx", sep = ""))
+## collect deliveries by recharge facility
+section_titles = list(
+  c("GSF Deliveries"), 
+  c("USF Deliveries")
+)
 
+# collect deliveries
+all_months = c(); all_annualstats = c()
+for (year in seq(2016,2021,1)) {
+  # read in and format data
+  delivery = readxl::read_xlsx(paste(as.character(year), "_Deliveries by Recharge Facility.xlsx", sep = ""))
+  n_columns_in_sheet = ncol(delivery)
+  sheet_columns_base_names = paste("C", as.character(c(1:n_columns_in_sheet)), sep="")
+  colnames(delivery) = sheet_columns_base_names
+  
+  # clean the file - extract data and collate 
+  for (title in section_titles) {
+    # what rows are this table on?
+    table_start = max(which(stringr::str_squish(delivery$C4) == title[1]))
+    potential_end_rows = which(stringr::str_squish(delivery$C1) == "Total")
+    table_end = min(potential_end_rows[which((potential_end_rows) > table_start)])
+    
+    # extract table, add year and table title columns
+    section = delivery[(table_start+2):table_end,]
+    colnames(section) = delivery[table_start+1,]
+    colnames(section)[3] = "Water User"
+    section$Year = year
+    section$Group = title[1]
+    section$Data = "Recharge"
+    
+    # check that the rows with NA on the sheet 
+    # are filled in with names where necessary
+    for (row in c(1:nrow(section))) {
+      # if a given row is missing a value
+      if (is.na(section$AMA[row])) {
+        # find the most recent non-NA row
+        rows_with_value = which(!is.na(section$AMA))
+        last_row_with_value = max(rows_with_value[rows_with_value < row])
+        
+        # overwrite
+        section$AMA[row] = section$AMA[last_row_with_value]
+      }
+      
+      # repeat for sub-names
+      if (is.na(section$`Recharge Facility`[row])) {
+        # find the most recent non-NA row
+        rows_with_value = which(!is.na(section$`Recharge Facility`))
+        last_row_with_value = max(rows_with_value[rows_with_value < row])
+        
+        # overwrite UNLESS current row is Total row
+        if (section$AMA[row] != "Total") {
+          section$`Recharge Facility`[row] = section$`Recharge Facility`[last_row_with_value]
+        }
+      }
+    }
+    
+    # separate into monthly and annual data
+    section_bymonth = section[,c(1:(ncol(section)-6),(ncol(section)-2):ncol(section))]
+    section_annualstats = section[,c(1:3,(ncol(section)-5):ncol(section))]
+    
+    # make long format and add to overall dataset
+    s_month_long = section_bymonth %>%
+      pivot_longer(cols = Jan:Dec, names_to = 'Month', values_to = 'deliveries')
+    s_annual_long = section_annualstats %>%
+      pivot_longer(cols = c(Delivered, Scheduled, Remaining), names_to = 'Variable', values_to = 'deliveries')
+    
+    # collect for every year and table
+    all_months = rbind(all_months, s_month_long)
+    all_annualstats = rbind(all_annualstats, s_annual_long)
+  }
+}
 
+# export results
+write.table(all_months, "CAP_recharge_byuser_monthly_2016_to_2021.csv", 
+            row.names = FALSE, col.names = TRUE, sep = ",")
+write.table(all_annualstats, "CAP_recharge_byuser_summary_2016_to_2021.csv", 
+            row.names = FALSE, col.names = TRUE, sep = ",")
 
