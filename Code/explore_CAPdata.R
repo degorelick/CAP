@@ -1791,6 +1791,86 @@ write.table(all_months, "CAP_deliveries_byuser_monthly_2016_to_2021.csv",
 write.table(all_annualstats, "CAP_deliveries_byuser_summary_2016_to_2021.csv", 
             row.names = FALSE, col.names = TRUE, sep = ",")
 
+## plot some results!
+# deliveries by user
+all_annualstats_toplot = all_annualstats %>%
+  mutate(deliveries = as.numeric(as.character(deliveries))) %>%
+  filter(Group != "Summary") %>%
+  filter(`User` != "Total") %>%
+  filter(Variable == "Delivered") %>%
+  mutate(`Agreement` = ifelse(`Agreement` %in% 
+                                 c("A--",
+                                   "A-RWCD",
+                                   "A-Wellton-Mohawk",
+                                   "A-Yavapai-Prescott",
+                                   "A-CDR"), "Assignment", `Agreement`)) %>%
+  mutate(`Agreement` = ifelse(`Agreement` %in% 
+                                c("UO",
+                                  "Unscheduled Overrun"), NA, `Agreement`)) %>%
+  mutate(`Agreement` = ifelse(`Agreement` %in% 
+                                c("Sub",
+                                  "Contract"), NA, `Agreement`)) %>%
+  filter(deliveries > 0) %>%
+  mutate(User = ifelse(User %in% 
+                                 c("Freeport-Miami",
+                                   "Freeport-Morenci",
+                                   "Freeport-Safford"), "Freeport", User)) %>%
+  mutate(User = ifelse(User %in% 
+                                 c("AWBA Interstate",
+                                   "AWBA Phx AMA",
+                                   "AWBA Pinal AMA",
+                                   "AWBA Tucson AMA"), "AWBA", User)) %>%
+  mutate(User = ifelse(User %in% 
+                                 c("AZWC, Casa Grande",
+                                   "AZWC, Coolidge",
+                                   "AZWC, Superstition",
+                                   "AZWC, White Tank"), "AZWC", User)) %>%
+  mutate(User = ifelse(User %in% 
+                                 c("EPCOR, AF",
+                                   "EPCOR, PV",
+                                   "EPCOR, SC",
+                                   "EPCOR, SCW"), "EPCOR", User)) %>%
+  mutate(User = ifelse(User %in% 
+                                 c("Tohono O'odham - SX",
+                                   "Tohono O'odham - ST"), "Tohono O'odham", User)) %>%
+  mutate(Agreement = ifelse(Agreement %in% 
+                         c("Exchange",
+                           "Lease",
+                           "Assignment"), "Exchange, Lease, \nor Assignment", Agreement))
+
+# plot all 
+temp = ggplot(data = all_annualstats_toplot) +
+  geom_bar(aes(x = Year, y = deliveries, fill = `User`),
+           stat = "identity", color = NA) +
+  facet_grid(Group ~ Agreement)
+
+ggsave(plot = temp, filename = "visualization/deliveries_annual.jpg", 
+       dpi = 400, units = "in", height = 10, width = 10)
+
+# plot just major users
+all_annualstats_toplot_major = all_annualstats_toplot %>% 
+  filter(deliveries > 15000)
+temp = ggplot(data = all_annualstats_toplot_major) +
+  geom_bar(aes(x = Year, y = deliveries, fill = `User`),
+           stat = "identity", color = NA) +
+  facet_grid(Group ~ Agreement) +
+  ggtitle("CAP major sub-contractor deliveries to users,")
+
+ggsave(plot = temp, filename = "visualization/deliveries_annual_largest.jpg", 
+       dpi = 400, units = "in", height = 10, width = 10)
+
+# plot just leases, exchanges, assignment 
+all_annualstats_toplot_lease = all_annualstats_toplot %>% 
+  filter(Agreement == "Exchange, Lease, \nor Assignment")
+temp = ggplot(data = all_annualstats_toplot_lease) +
+  geom_bar(aes(x = Year, y = deliveries, fill = `User`),
+           stat = "identity", color = NA) +
+  facet_grid(. ~ Partner)
+
+ggsave(plot = temp, filename = "visualization/deliveries_annual_leasesonly.jpg", 
+       dpi = 400, units = "in", height = 6, width = 12)
+
+
 ## collect deliveries by recharge facility
 section_titles = list(
   c("GSF Deliveries"), 
@@ -1868,4 +1948,55 @@ write.table(all_months, "CAP_recharge_byuser_monthly_2016_to_2021.csv",
             row.names = FALSE, col.names = TRUE, sep = ",")
 write.table(all_annualstats, "CAP_recharge_byuser_summary_2016_to_2021.csv", 
             row.names = FALSE, col.names = TRUE, sep = ",")
+
+## plot some results!
+# recharge by contributor
+all_annualstats_toplot = all_annualstats %>%
+  mutate(deliveries = as.numeric(as.character(deliveries))) %>%
+  filter(AMA != "Total") %>%
+  filter(`Water User` != "Total") %>%
+  filter(Variable == "Delivered") %>%
+  mutate(`Water User` = ifelse(`Water User` %in% 
+                                 c("Freeport-Miami",
+                                   "Freeport-Morenci",
+                                   "Freeport-Safford"), "Freeport", `Water User`)) %>%
+  mutate(`Water User` = ifelse(`Water User` %in% 
+                                 c("AWBA Interstate",
+                                   "AWBA Phx AMA",
+                                   "AWBA Pinal AMA",
+                                   "AWBA Tucson AMA"), "AWBA", `Water User`)) %>%
+  mutate(`Water User` = ifelse(`Water User` %in% 
+                                 c("AZWC, Casa Grande",
+                                   "AZWC, Coolidge",
+                                   "AZWC, Superstition",
+                                   "AZWC, White Tank"), "AZWC", `Water User`)) %>%
+  mutate(`Water User` = ifelse(`Water User` %in% 
+                                 c("EPCOR, AF",
+                                   "EPCOR, PV",
+                                   "EPCOR, SC",
+                                   "EPCOR, SCW"), "EPCOR", `Water User`)) %>%
+  mutate(`Water User` = ifelse(`Water User` %in% 
+                                 c("Tohono O'odham - SX",
+                                   "Tohono O'odham - ST"), "Tohono O'odham", `Water User`))
+
+# plot all 
+temp = ggplot(data = all_annualstats_toplot) +
+  geom_bar(aes(x = Year, y = as.numeric(as.character(deliveries)), fill = `Water User`),
+           stat = "identity", color = NA) +
+  facet_grid(AMA ~ .)
+
+ggsave(plot = temp, filename = "visualization/recharge_annual.jpg", 
+       dpi = 400, units = "in", height = 12, width = 10)
+
+# plot just major users
+all_annualstats_toplot_major = all_annualstats_toplot %>% 
+  filter(deliveries > 10000)
+temp = ggplot(data = all_annualstats_toplot_major) +
+  geom_bar(aes(x = Year, y = as.numeric(as.character(deliveries)), fill = `Water User`),
+           stat = "identity", color = NA) +
+  facet_grid(AMA ~ `Water User`) + 
+  ggtite("CAP major sub-contractor deliveries to recharge facilities, by AMA region (panel rows)")
+
+ggsave(plot = temp, filename = "visualization/recharge_annual_largest.jpg", 
+       dpi = 400, units = "in", height = 10, width = 20)
 

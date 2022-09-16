@@ -11,8 +11,13 @@ library(tidyverse); options(dplyr.summarise.inform = FALSE)
 ### -----------------------------------------------------
 ## Read in all the data we need, some of which has
 ##  already been cleaned by explore_CAPdata.R
-Historical_Deliveries = read.csv("CAP_deliveries_by_user_2008_to_2021.csv", header = TRUE)
 Historical_CAPDiversion = read.csv("CAP_diversions_summary_2008_to_2021.csv", header = TRUE)
+
+Historical_Deliveries = read.csv("CAP_deliveries_byuser_monthly_2016_to_2021.csv", header = TRUE)
+Historical_Deliveries_ForRecharge = read.csv("CAP_recharge_byuser_monthly_2016_to_2021.csv", header = TRUE)
+Historical_Annual_Scheduled_Deliveries = read.csv("CAP_deliveries_byuser_summary_2016_to_2021.csv", header = TRUE)
+#Historical_Deliveries = read.csv("CAP_deliveries_by_user_2008_to_2021.csv", header = TRUE)
+
 Historical_EnergyPrices = read.csv("Palo Verde Energy Prices.csv", header = TRUE)
 Historical_PowerUse = read.csv("CAP_power_data_2008_to_2021.csv", header = TRUE)
 Historical_Budget = read.csv("CAP_annual_budgets_2011_to_2020.csv", header = TRUE)
@@ -85,23 +90,161 @@ Historical_CAPCanalLosses_Organized = Historical_CAPDiversion %>%
 
 ### -----------------------------------------------------
 ## Collect major contractor historical deliveries
+##  and organize by priority, lease, use (banking/storage/recharge)
+##  FIRST STEP HERE: reorganize and clean, keep top-20 users
+Historical_Deliveries_Organized = Historical_Deliveries %>%
+  mutate(Month = match(Month, month.abb)) %>%
+  mutate(datetime = lubridate::make_datetime(year = Year, month = Month)) %>%
+  filter(Group != "Summary") %>% select(-c(Data,Year,Month)) %>%
+  filter(User != "Total") %>%
+  mutate(`Agreement` = ifelse(`Agreement` %in% 
+                                c("A--",
+                                  "A-RWCD",
+                                  "A-Wellton-Mohawk",
+                                  "A-Yavapai-Prescott",
+                                  "A-CDR"), "Assignment", `Agreement`)) %>%
+  mutate(`Agreement` = ifelse(`Agreement` %in% 
+                                c("UO",
+                                  "Unscheduled Overrun"), NA, `Agreement`)) %>%
+  mutate(`Agreement` = ifelse(`Agreement` %in% 
+                                c("Sub",
+                                  "Contract"), NA, `Agreement`)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("Freeport-Miami",
+                           "Freeport-Morenci",
+                           "Freeport-Safford"), "Freeport", User)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("AWBA Interstate",
+                           "AWBA Phx AMA",
+                           "AWBA Pinal AMA",
+                           "AWBA Tucson AMA"), "AWBA", User)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("AZWC, Casa Grande",
+                           "AZWC, Coolidge",
+                           "AZWC, Superstition",
+                           "AZWC, White Tank"), "AZWC", User)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("EPCOR, AF",
+                           "EPCOR, PV",
+                           "EPCOR, SC",
+                           "EPCOR, SCW"), "EPCOR", User)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("Tohono O'odham - SX",
+                           "Tohono O'odham - ST"), "Tohono O'odham", User)) %>%
+  mutate(Partner = ifelse(Partner %in% 
+                         c("Tohono O'odham - SX",
+                           "Tohono O'odham - ST"), "Tohono O'odham", Partner)) %>%
+  mutate(Group = ifelse(Group %in% c("Excess - Other Excess"), "Excess", Group)) %>%
+  mutate(Group = ifelse(Group %in% c("Excess - Ag Pool"), "Ag Pool", Group)) %>%
+  mutate(Group = ifelse(Group %in% c("Federal On-Res", "Federal Off-Res"), "Federal", Group)) %>%
+  mutate(Partner = ifelse(Partner == User, NA, Partner)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("AWBA", 
+                           "Ak-Chin", "GRIC", "SCAT", "Tohono O'odham", 
+                           "HIDD", "HVID", "AZWC", "CAGRD", "CAIDD", "MSIDD", 
+                           "Chandler", "Gilbert", "Glendale", "Mesa", "Peoria", "Phoenix", "Scottsdale", "Tempe", "Tucson"), User, "OTHER"))
+
+## STEP 2: AGGREGATE USE AFTER CLEANING
+Historical_Deliveries_Organized = Historical_Deliveries_Organized %>%
+  group_by(datetime, User, Partner, Agreement, Group) %>% summarize(total_deliveries = sum(deliveries))
+
+## STEP 3: IDENTIFY DELIVERIES TO THESE USERS THAT ARE USED FOR GSF/USF RECHARGE
+##   AND COMBINE WITH DELIVERIES ABOVE
+colnames(Historical_Deliveries_ForRecharge)[3] = "User"
+Historical_Deliveries_ForRecharge_Organized = Historical_Deliveries_ForRecharge %>%
+  filter(User != "Total") %>% filter(AMA != "Total") %>%
+  mutate(User = ifelse(User %in% 
+                         c("Freeport-Miami",
+                           "Freeport-Morenci",
+                           "Freeport-Safford"), "Freeport", User)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("AWBA Interstate",
+                           "AWBA Phx AMA",
+                           "AWBA Pinal AMA",
+                           "AWBA Tucson AMA"), "AWBA", User)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("AZWC, Casa Grande",
+                           "AZWC, Coolidge",
+                           "AZWC, Superstition",
+                           "AZWC, White Tank"), "AZWC", User)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("EPCOR, AF",
+                           "EPCOR, PV",
+                           "EPCOR, SC",
+                           "EPCOR, SCW"), "EPCOR", User)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("Tohono O'odham - SX",
+                           "Tohono O'odham - ST"), "Tohono O'odham", User)) %>%
+  mutate(User = ifelse(User %in% 
+                         c("AWBA", 
+                           "Ak-Chin", "GRIC", "SCAT", "Tohono O'odham", 
+                           "HIDD", "HVID", "AZWC", "CAGRD", "CAIDD", "MSIDD", 
+                           "Chandler", "Gilbert", "Glendale", "Mesa", "Peoria", "Phoenix", "Scottsdale", "Tempe", "Tucson"), 
+                       User, "OTHER")) %>%
+  mutate(Month = match(Month, month.abb)) %>%
+  mutate(datetime = lubridate::make_datetime(year = Year, month = Month)) %>%
+  select(datetime, User, deliveries) %>%
+  group_by(datetime, User) %>% summarize(total_recharge = sum(deliveries)) %>%
+  pivot_wider(names_from = c(Variable, Group), values_from = rate)
+
+
+## STEP 4: WIDEN THE DATA TO MAKE INPUT FILES FOR CAPFEWS
+##  (for deliveries, not recharge, I want total to each user
+##   and the splits by priority type and purpose separately)
+Historical_Deliveries_ForRecharge_Organized_Wide = Historical_Deliveries_ForRecharge_Organized %>%
+  pivot_wider(names_from = User, values_from = total_recharge)
+
+Historical_Deliveries_Organized_Wide = Historical_Deliveries_Organized %>%
+  select(datetime, User, total_deliveries) %>%
+  group_by(datetime, User) %>% summarise(total_deliveries = sum(total_deliveries)) %>%
+  pivot_wider(names_from = User, values_from = total_deliveries)
+
+
+## STEP 5: EXTRACT THE SEASONALITY CURVES OF DEMAND FOR MAJOR USERS
+for (year in unique(lubridate::year(Historical_Deliveries_Organized_Wide$datetime))) {
+  year_deliveries_by_major_user = Historical_Deliveries_Organized_Wide %>% 
+    filter(lubridate::year(datetime) == year) 
+  year_deliveries_by_major_user[is.na(year_deliveries_by_major_user)] = 0
+  if (year == 2016) {
+    year_deliveries_by_major_user_totaltable = year_deliveries_by_major_user[,2:ncol(year_deliveries_by_major_user)]
+  } else {
+    year_deliveries_by_major_user_totaltable = year_deliveries_by_major_user_totaltable +
+      year_deliveries_by_major_user[,2:ncol(year_deliveries_by_major_user)]
+  }
+}
+year_deliveries_by_major_user_totaltable_seasonality = 
+  apply(year_deliveries_by_major_user_totaltable, MARGIN = 2, 
+        function(x) {x/sum(x)})
+year_deliveries_by_major_user_totaltable_seasonality = as.data.frame(year_deliveries_by_major_user_totaltable_seasonality)
+year_deliveries_by_major_user_totaltable_seasonality$Month = month.abb
+
+  
+## STEP 6: EXTRACT THE FRACTION OF DELIVERIES UNDER EACH ENTITLEMENT CLASS AND PURPOSE, BY USER
+Historical_Deliveries_Organized_Normalized_ByClass_ByUse
+
+
+### -----------------------------------------------------
+## Collect major contractor historical deliveries
 ##  and organize by priority, lease, banking/storage
 ##  (initially just tracked top-14 historical largest,
 ##   then added others that show up consistently)
+
+# group into these major contractors
+# and the rest are lumped into 'OTHER' 
 major_contractors = list(
-  c("Ak-Chin Indian Community", "Ak-Chin", "ACIC", "Ak-Chin IC", "Ak Chin Indian Community", "Ak Chin IC", "Ak Chin Farm"),
+  c("ACIC", "Ak-Chin Indian Community", "Ak-Chin", "Ak-Chin IC", "Ak Chin Indian Community", "Ak Chin IC", "Ak Chin Farm"),
   c("AWBA", "Arizona Water Banking Authority"),
   c("CAIDD", "Central Arizona IDD", "Central AZ IDD", "CAID", "Central Arizona ID", "Central AZ ID"),
   c("CAGRD", "Central Arizona GRD"),
   c("Gilbert", "Town of Gilbert"),
-  c("Gila River Indian Community", "GRIC", "Gila River IC", "Gila River"),
+  c("GRIC", "Gila River Indian Community", "Gila River IC", "Gila River"),
   c("Mesa", "Mesa, City of"),
   c("MSIDD", "Maricopa Stanfield IDD", "Maricopa-Stanfield", "Maricopa Stanfield"),
   c("Peoria", "City of Peoria"),
   c("Phoenix", "Phoenix, City of", "City of Phoenix", "PHX"),
-  c("San Carlos Apache Nation", "SCAT", "SCAN", "SCIC", "San Carlos IC", "San Carlos AT", "San Carlos"),
+  c("SCAT", "San Carlos Apache Nation", "SCAN", "SCIC", "San Carlos IC", "San Carlos AT", "San Carlos"),
   c("Scottsdale", "City of Scottsdale"),
-  c("Tohono Oodham Indian Nation", "Tohono O'odham Indian Nation", "Tohono", "TOIC", "TOIN", "Tohono IC"),
+  c("TOIC", "Tohono Oodham Indian Nation", "Tohono O'odham Indian Nation", "Tohono", "TOIN", "Tohono IC"),
   c("Tucson", "Tucson, City of"),
   
   c("SRPMIC", "Salt River Pima"),
@@ -110,14 +253,13 @@ major_contractors = list(
   c("Tempe"),
   c("HIDD", "HID", "Hohokam"),
   c("HVIDD", "HVID", "Harquahala Valley IDD", "Harquahala Valley ID"),
-  c("San Carlos IDD", "SCIDD"),
-  c("Welton-Mohawk", "Wellton-Mohawk"),
+  c("SCIDD", "San Carlos IDD"),
+  c("Welton", "Welton-Mohawk", "Wellton-Mohawk"),
   c("CMID", "CMIDD", "Cortaro Marana Irrigation District"),
-  c("Tonopah ID", "TID", "TIDD"),
+  c("TIDD", "Tonopah ID", "TID"),
   c("MWD", "Maricopa Water District"),
   c("NMIDD", "New Magma IDD", "New Magma", "NMID")
 )
-
 
 
 check_totals_in_2008 = 0; check_totals_in_2021 = 0
