@@ -196,8 +196,8 @@ Historical_Deliveries_ForRecharge_Organized_Wide = Historical_Deliveries_ForRech
 Historical_Deliveries_Organized_Wide = Historical_Deliveries_Organized_Grouped %>%
   select(datetime, User, total_deliveries) %>%
   group_by(datetime, User) %>% summarise(total_deliveries = sum(total_deliveries)) %>%
-  pivot_wider(names_from = User, values_from = total_deliveries) %>%
-  replace(is.na(Historical_Deliveries_Organized_Wide), 0)
+  pivot_wider(names_from = User, values_from = total_deliveries)
+Historical_Deliveries_Organized_Wide[is.na(Historical_Deliveries_Organized_Wide)] = 0
 
 # add missing users in recharge file (not all top-20 contractors do recharge) with zeroes
 for (missing_user in colnames(Historical_Deliveries_Organized_Wide)) {
@@ -314,6 +314,9 @@ fraction_recharge = fraction_recharge %>% select(Month, everything())
 fraction_recharge_seasonality = fraction_recharge %>% group_by(Month) %>% 
   summarise(across(everything(), list(mean)))
 colnames(fraction_recharge_seasonality) = colnames(fraction_recharge)
+
+# annual summary for each user
+apply(fraction_recharge_seasonality, MARGIN = 2, mean)
 
 ### -----------------------------------------------------
 ## Collect major contractor historical deliveries
@@ -563,4 +566,79 @@ Historical_PumpingEnergy_Organized = Historical_PowerUse %>%
            Table == "CAP Pumping Plants - Projection of Energy Use - For Deliveries Only" |
            Table == "CAP Pumping Plants - Projection of Energy Use")
 
-  
+ 
+### -----------------------------------------------------
+## collect entitlement info for CAP contractors
+entitlements = list()
+entitlements[[1]] = c("Ak-Chin",        "AWBA",           "AZWC",           "CAGRD",          "CAIDD",
+                      "Chandler",       "Gilbert",        "Glendale",       "GRIC",           "HIDD",     
+                      "HVID",           "Mesa",           "MSIDD",          "OTHER",          "Peoria",         
+                      "Phoenix", "SCAT","Scottsdale",     "Tempe",          "Tohono O'odham", "Tucson")
+##  total in each delivery priority class
+#     classes: M&I, NIA, Indian, P3
+#     numbers from: CAP Subcontracting Status Report - April 2022
+#       totals for 2022: TOTAL = 1,294,717 AF
+#                          M&I =   620,678 
+#                          NIA =    44,530 +  47,303 +  5,000 + 102,000 + 18,100 + 50,000 + 16,000
+#                       Indian =   555,806 +     500          - 102,000 - 18,100 - 50,000 - 16,000
+#                           P3 =    22,000 (Wellton-Mohawk IDD, 20,900 AF after system loss)
+#     Several users here (Ag users) have no P3 or P4 rights:
+#       AWBA, CAIDD, HIDD, HVID, MSIDD deliveries
+#       are ENTIRELY of excess CAP water (Ag/Excess Pool)
+entitlements[[2]] = list(c(0, 0, 47500 + 27500, 0),  #Ak-Chin
+                         c(0, 0, 0, 0),  #AWBA
+                         c(6285 + 8884 + 2000 + 968, 0, 0, 0), #AZWC
+                         c(6426, 18185, 0, 0), #CAGRD
+                         c(0, 0, 0, 0), #CAIDD
+                         c(8654, 2952 + 972, 0, 4278), #Chandler
+                         c(7235, 1832 + 1537, 0, 6762), #Gilbert
+                         c(17236, 682, 0, 3000), #Glendale
+                         c(0, 102000 + 18100, 173100 + 18600, 0), #GRIC
+                         c(0, 0, 0, 0), #HIDD
+                         c(0, 0, 0, 0), #HVID
+                         c(43503, 4924 + 627, 0, 2760), #Mesa
+                         c(0, 0, 0, 0), #MSIDD
+                         c(NA, NA, NA, NA), #OTHER - total M&I MUST CALCULATE
+                         c(27121, 0, 0, 0), #Peoria
+                         c(122204, 36144 + 1136, 0, 5000), #Phoenix
+                         c(14665 + 3480, 0, 30800 + 12700, 0), #SCAT
+                         c(52810, 3283 + 23, 500, 100), #Scottsdale
+                         c(4315, 23, 0, 100), #Tempe
+                         c(0, 27000 + 23000 + 10800 + 5200, 8000, 0), #Tohono O'odham
+                         c(144191, 0, 0, 0)) #Tucson
+
+# calculate OTHER category for each priority class
+# by calculating fraction of each priority class use
+# entitlements are for named users and assign remaining
+# entitlements of the priority class to OTHER
+MaI_total_entitlement = 620678
+NIA_total_entitlement = (44530 + 47303 + 5000 + 102000 + 18100 + 50000 + 16000)
+FED_total_entitlement = (555806 - 500 - 102000 - 18100 - 50000 - 16000)
+PTR_total_entitlement = 22000
+
+MaIpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[1]/MaI_total_entitlement})), na.rm = TRUE)
+NIApri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[2]/NIA_total_entitlement})), na.rm = TRUE)
+FEDpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[3]/FED_total_entitlement})), na.rm = TRUE)
+PTRpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[4]/PTR_total_entitlement})), na.rm = TRUE)
+
+entitlements[[2]][[14]][1] = MaI_total_entitlement * (1 - MaIpri_frac)
+entitlements[[2]][[14]][2] = NIA_total_entitlement * (1 - NIApri_frac)
+entitlements[[2]][[14]][3] = FED_total_entitlement * (1 - FEDpri_frac)
+entitlements[[2]][[14]][4] = PTR_total_entitlement * (1 - PTRpri_frac)
+
+ 
+### -----------------------------------------------------
+## MAKE JSON FILE(S) FOR CAPFEWS
+library(rjson)
+
+## write JSON for CAP canal capacities, etc
+canal_json = list()
+write(canal_json, "CAP_properties.json")
+
+## write JSON for CAP canal contractors (districts)
+districts_json = list()
+write(districts_json, "CAP_properties.json")
+
+## write JSON for CAP canal contractors rights (contracts)
+contracts_json = list()
+write(contracts_json, "CAP_properties.json")
