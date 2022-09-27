@@ -626,19 +626,6 @@ entitlements[[2]][[14]][2] = NIA_total_entitlement * (1 - NIApri_frac)
 entitlements[[2]][[14]][3] = FED_total_entitlement * (1 - FEDpri_frac)
 entitlements[[2]][[14]][4] = PTR_total_entitlement * (1 - PTRpri_frac)
 
- 
-### -----------------------------------------------------
-## MAKE JSON FILE(S) FOR CAPFEWS
-library(rjson)
+write.table(c(PTR_total_entitlement, MaI_total_entitlement, FED_total_entitlement, NIA_total_entitlement),
+            "CAP_priorityclass_entitlementtotals2022.csv", sep = ",", row.names = FALSE, col.names = FALSE)
 
-## write JSON for CAP canal capacities, etc
-canal_json = list()
-write(canal_json, "CAP_properties.json")
-
-## write JSON for CAP canal contractors (districts)
-districts_json = list()
-write(districts_json, "CAP_properties.json")
-
-## write JSON for CAP canal contractors rights (contracts)
-contracts_json = list()
-write(contracts_json, "CAP_properties.json")
