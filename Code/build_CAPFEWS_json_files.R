@@ -65,5 +65,20 @@ for (contract_class in c("PTR", "MUI", "FED", "NIA", "AGR", "EXC")) {
 
 ### Write District JSONs --------------------------------
 ## write JSON for CAP canal contractors (districts)
+## each user needs its own JSON file 
+
+
+
 districts_json = list()
 write(districts_json, "CAP_properties.json")
+
+
+
+
+### Write Recharge Facility JSONs -----------------------
+## write JSON for CAP recharge projects (banks)
+## where users can divert and store deliveries to accumulate credits
+
+
+
+
