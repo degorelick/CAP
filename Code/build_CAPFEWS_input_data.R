@@ -101,11 +101,13 @@ write.table(cap_data, "../CAPFEWS/calfews_src/data/input/cap-data.csv", sep = ",
 ## Collect major contractor historical deliveries
 ##  and organize by priority, lease, use (banking/storage/recharge)
 ##  FIRST STEP HERE: reorganize and clean, keep top-20 users
+rights = read.csv("CAP_Subcontracts_CAPOnlineMap.csv", header = TRUE)
 UsersToKeep = c("AWBA", "FMYN", "WMAT", "SRPMIC",
                 "Ak-Chin", "GRIC", "SCAT", "Tohono O'odham", 
                 "HIDD", "HVID", "AZWC", "CAGRD", "CAIDD", "MSIDD", "ASARCO",
                 "Chandler", "Gilbert", "Glendale", "Mesa", "Peoria", "AZ State Land",
                 "Phoenix", "Scottsdale", "Tempe", "Tucson", "Surprise", "Goodyear")
+UsersToKeep = union(UsersToKeep, unique(rights$DavidName))
 
 Historical_Deliveries_Organized = Historical_Deliveries %>%
   mutate(Month = match(Month, month.abb)) %>%
@@ -683,9 +685,6 @@ entitlements[[1]] = c("Ak-Chin",        "AWBA",           "AZWC",           "CAG
                       "Chandler",       "Gilbert",        "Glendale",       "GRIC",           "HIDD",     
                       "HVID",           "Mesa",           "MSIDD",          "OTHER",          "Peoria",         
                       "Phoenix", "SCAT","Scottsdale",     "Tempe",          "Tohono O'odham", "Tucson")
-
-UsersToKeep
-
 ##  total in each delivery priority class
 #     classes: M&I, NIA, Indian, P3
 #     numbers from: CAP Subcontracting Status Report - April 2022
@@ -722,48 +721,96 @@ entitlements[[2]] = list(c(0, 0, 27500, 50000),  #Ak-Chin
 
 # OCT 2022: Current Entitlements are also available by priority class
 # here: https://library.cap-az.com/maps/capallocations
-entitlements[[2]] = list(c(0, 0, 27500, 50000),  #Ak-Chin
-                         c(0, 0, 0, 0),  #AWBA
-                         c(6285 + 8884 + 2000 + 968, 0, 0, 0), #AZWC
-                         c(6426, 18185, 0, 0), #CAGRD
-                         c(0, 0, 0, 0), #CAIDD
-                         c(8654, 2952 + 972, 0, 4278), #Chandler
-                         c(7235, 1832 + 1537, 0, 6762), #Gilbert
-                         c(17236, 682, 0, 3000), #Glendale
-                         c(0, 102000 + 18100, 173100 + 18600, 0), #GRIC
-                         c(0, 0, 0, 0), #HIDD
-                         c(0, 0, 0, 0), #HVID
-                         c(43503, 4924 + 627, 0, 2622), #Mesa
-                         c(0, 0, 0, 0), #MSIDD
-                         c(NA, NA, NA, NA), #OTHER - total M&I MUST CALCULATE
-                         c(27121, 0, 0, 0), #Peoria
-                         c(122204, 36144 + 1136, 0, 4750), #Phoenix
-                         c(14665 + 3480, 0, 30800 + 12700, 0), #SCAT
-                         c(52810, 3283 + 23, 500, 100), #Scottsdale
-                         c(10249, 0, 0, 0), # Surprise City
-                         c(4315, 23, 0, 100), #Tempe
-                         c(0, 27000 + 23000 + 10800 + 5200, 8000, 0), #Tohono O'odham
-                         c(144191, 0, 0, 0)) #Tucson
+# madison collected this data, repeat for more contractors with her numbers
+rights = read.csv("CAP_Subcontracts_CAPOnlineMap.csv", header = TRUE)
+UsersToKeep = c("AWBA", "FMYN", "WMAT", "SRPMIC",
+                "Ak-Chin", "GRIC", "SCAT", "Tohono O'odham", 
+                "HIDD", "HVID", "AZWC", "CAGRD", "CAIDD", "MSIDD", "ASARCO",
+                "Chandler", "Gilbert", "Glendale", "Mesa", "Peoria", "AZ State Land",
+                "Phoenix", "Scottsdale", "Tempe", "Tucson", "Surprise", "Goodyear")
+AllUsersToKeep = union(UsersToKeep, unique(rights$DavidName))
+
+# first collect from madison's dataset and fill in the rest manually 
+# with data from CAP entitlement doc
+entitlement_values = c()
+for (name in unique(rights$DavidName)) {
+  user = rights %>% filter(DavidName == name)
+  user = as.data.frame(t(as.data.frame(colSums(user[,2:5]))))
+  
+  # update a handful of entitlements
+  if (user == "CAGRD") {
+    user$M.I.Priority.Volume. = "6426"
+    user$NIA.Priority.Volume. = "18185"
+  }
+  
+  entitlement_values = rbind(entitlement_values,
+                             c(name, 
+                               user$P3.Priority.Volume., 
+                               user$M.I.Priority.Volume., 
+                               user$Indian.Priority.Volume.,
+                               user$NIA.Priority.Volume.))
+}
+
+# fill in remaining names
+RemainingUsers = setdiff(AllUsersToKeep, unique(rights$DavidName))
+RemainingEntitlements = rbind(c("AWBA", "0", "0", "0", "0"),
+                          c("WMAT", "0", "0", "1218", "0"),
+                          c("HIDD", "0", "0", "0", "0"),
+                          c("HVID", "0", "0", "0", "0"),
+                          c("CAIDD", "0", "0", "0", "0"),
+                          c("MSIDD", "0", "0", "0", "0"))
+entitlement_values = rbind(entitlement_values,
+                           RemainingEntitlements)
+colnames(entitlement_values) = c("User", "PTR", "MUI", "FED", "NIA")
+entitlement_values = as.data.frame(entitlement_values)
+entitlement_values = entitlement_values %>% mutate_at(vars(-User), as.numeric)
+
+# square up these values with the total entitlement counts in 2022
+# hope that these are right...
+PTR_total_entitlement = (22000 + 50000) * 0.95 # after taking 5% system loss out
+MUI_total_entitlement = (620678)
+FED_total_entitlement = (555806 - 500 - 102000 - 18100 - 16000 - 50000)
+NIA_total_entitlement = (44530 + 47303 + 5000 + 102000 + 18100 + 16000)
+
+# print for a sanity check
+colSums(entitlement_values[,2:5])
+c(PTR_total_entitlement, MUI_total_entitlement, FED_total_entitlement, NIA_total_entitlement)
+
+entitlement_values$MUI[which(entitlement_values$User == "OTHER")] = 
+  entitlement_values$MUI[which(entitlement_values$User == "OTHER")] +
+  MUI_total_entitlement - sum(entitlement_values$MUI)
+entitlement_values$FED[which(entitlement_values$User == "OTHER")] = 
+  entitlement_values$FED[which(entitlement_values$User == "OTHER")] +
+  FED_total_entitlement - sum(entitlement_values$FED)
+entitlement_values$NIA[which(entitlement_values$User == "OTHER")] = 
+  entitlement_values$NIA[which(entitlement_values$User == "OTHER")] +
+  NIA_total_entitlement - sum(entitlement_values$NIA)
+
+# export the numbers and the fractions of total entitlement classes
+write.table(entitlement_values, "user_entitlements.csv", sep = ",", row.names = FALSE, col.names = TRUE)
+
+entitlement_values_norm = apply(entitlement_values[,2:5], 2, function(x) {x/sum(x)})
+entitlement_values_norm = data.frame(entitlement_values$User, entitlement_values_norm)
+write.table(entitlement_values_norm, "user_entitlements_fractions.csv", sep = ",", row.names = FALSE, col.names = TRUE)
+
 
 # calculate OTHER category for each priority class
 # by calculating fraction of each priority class use
 # entitlements are for named users and assign remaining
 # entitlements of the priority class to OTHER
-MaI_total_entitlement = 620678
-NIA_total_entitlement = (44530 + 47303 + 5000 + 102000 + 18100 + 50000 + 16000)
-FED_total_entitlement = (555806 - 500 - 102000 - 18100 - 50000 - 16000 - 50000)
-PTR_total_entitlement = 22000 + 50000
-
-MaIpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[1]/MaI_total_entitlement})), na.rm = TRUE)
-NIApri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[2]/NIA_total_entitlement})), na.rm = TRUE)
-FEDpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[3]/FED_total_entitlement})), na.rm = TRUE)
-PTRpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[4]/PTR_total_entitlement})), na.rm = TRUE)
-
-entitlements[[2]][[14]][1] = MaI_total_entitlement * (1 - MaIpri_frac)
-entitlements[[2]][[14]][2] = NIA_total_entitlement * (1 - NIApri_frac)
-entitlements[[2]][[14]][3] = FED_total_entitlement * (1 - FEDpri_frac)
-entitlements[[2]][[14]][4] = PTR_total_entitlement * (1 - PTRpri_frac)
-
-write.table(c(PTR_total_entitlement, MaI_total_entitlement, FED_total_entitlement, NIA_total_entitlement),
-            "CAP_priorityclass_entitlementtotals2022.csv", sep = ",", row.names = FALSE, col.names = FALSE)
+# ---
+# EDIT THIS IS REPLACED ABOVE BY SUMMING THE ENTITLEMENT FILES
+# ---
+# MaIpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[1]/MUI_total_entitlement})), na.rm = TRUE)
+# NIApri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[2]/NIA_total_entitlement})), na.rm = TRUE)
+# FEDpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[3]/FED_total_entitlement})), na.rm = TRUE)
+# PTRpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[4]/PTR_total_entitlement})), na.rm = TRUE)
+# 
+# entitlements[[2]][[14]][1] = MUI_total_entitlement * (1 - MaIpri_frac)
+# entitlements[[2]][[14]][2] = NIA_total_entitlement * (1 - NIApri_frac)
+# entitlements[[2]][[14]][3] = FED_total_entitlement * (1 - FEDpri_frac)
+# entitlements[[2]][[14]][4] = PTR_total_entitlement * (1 - PTRpri_frac)
+# 
+# write.table(c(PTR_total_entitlement, MUI_total_entitlement, FED_total_entitlement, NIA_total_entitlement),
+#             "CAP_priorityclass_entitlementtotals2022.csv", sep = ",", row.names = FALSE, col.names = FALSE)
 
