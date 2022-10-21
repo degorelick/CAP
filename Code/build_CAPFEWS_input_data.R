@@ -8,7 +8,6 @@ rm(list=ls()) # clear memory
 setwd('C:/Users/dgorelic/OneDrive - University of North Carolina at Chapel Hill/UNC/Research/IM3/CAP/Data') # set directory
 library(tidyverse); options(dplyr.summarise.inform = FALSE)
 
-### -----------------------------------------------------
 ## Read in all the data we need, some of which has
 ##  already been cleaned by explore_CAPdata.R
 Historical_CAPDiversion = read.csv("CAP_diversions_summary_2008_to_2021.csv", header = TRUE)
@@ -29,7 +28,7 @@ CRSS_CAPDiversion = readxl::read_xlsx("PNNL.xlsx", sheet = "CAP")
 CRSS_ShortageSummary = readxl::read_xlsx("PNNL.xlsx", sheet = "Shortage")
 #CRSS_AZDiversion = readxl::read_xlsx("PNNL.xlsx", sheet = "AZ") # may not need this
 
-### -----------------------------------------------------
+### Collect Historic and CRSS Water Availability -----------------------------------------------------
 ## Collect Lake Mead projections from CRSS
 ##  and historical water withdrawals into CAP system
 
@@ -97,7 +96,7 @@ cap_data = Historical_MeadElevation_Organized %>%
   left_join(Historical_CAPCanalLosses_Organized, by = 'datetime')
 write.table(cap_data, "../CAPFEWS/calfews_src/data/input/cap-data.csv", sep = ",", row.names = FALSE, col.names = TRUE)
 
-### -----------------------------------------------------
+### Collect Historic Contractor Delivery Data -----------------------------------------------------
 ## Collect major contractor historical deliveries
 ##  and organize by priority, lease, use (banking/storage/recharge)
 ##  FIRST STEP HERE: reorganize and clean, keep top-20 users
@@ -161,7 +160,7 @@ Historical_Deliveries_Organized = Historical_Deliveries %>%
 Historical_Deliveries_Organized_Grouped = Historical_Deliveries_Organized %>%
   group_by(datetime, User, Partner, Agreement, Group) %>% summarize(total_deliveries = sum(deliveries))
 
-## STEP 3: IDENTIFY DELIVERIES TO THESE USERS THAT ARE USED FOR GSF/USF RECHARGE
+### STEP 3: IDENTIFY DELIVERIES TO THESE USERS THAT ARE USED FOR GSF/USF RECHARGE ------------
 ##   AND COMBINE WITH DELIVERIES ABOVE
 colnames(Historical_Deliveries_ForRecharge)[3] = "User"
 Historical_Deliveries_ForRecharge_Organized = Historical_Deliveries_ForRecharge %>%
@@ -192,20 +191,22 @@ Historical_Deliveries_ForRecharge_Organized = Historical_Deliveries_ForRecharge 
   mutate(Month = match(Month, month.abb)) %>%
   mutate(datetime = lubridate::make_datetime(year = Year, month = Month)) 
 
-##  STEP 3B: SORT RECHARGE DELIVERIES BY FACILITY FOR CAPFEWS AND EXPORT  
-RCRG_byFacility = Historical_Deliveries_ForRecharge_Organized %>%
-  select(datetime, User, Recharge.Facility, deliveries) %>%
-  group_by(User, Recharge.Facility) %>% summarize(total_recharge = sum(deliveries)) %>%
-  pivot_wider(names_from = User, values_from = total_recharge)
+###  STEP 3B: SORT RECHARGE DELIVERIES BY FACILITY FOR CAPFEWS AND EXPORT  ------------
+## NOTE: THIS IS REPLACED BY AGGREGATING BY AMA FOR CAPFEWS, DONE BELOW
 
-RCRG_byFacility2021 = Historical_Deliveries_ForRecharge_Organized %>%
-  filter(lubridate::year(datetime) == 2021) %>% 
-  mutate(Recharge.Facility = ifelse(Recharge.Facility %in% c("MAR 5", "MAR 1B", "MAR 6B"), "MAR", Recharge.Facility),
-         Recharge.Facility = ifelse(Recharge.Facility %in% c("AFRP Constructed", "AFRP Managed"), "AFRP", Recharge.Facility),
-         Recharge.Facility = ifelse(Recharge.Facility %in% c("BKW-Milewide"), "BKW", Recharge.Facility)) %>%
-  select(datetime, User, Recharge.Facility, deliveries) %>%
-  group_by(User, Recharge.Facility) %>% summarize(total_recharge = sum(deliveries)) %>%
-  pivot_wider(names_from = User, values_from = total_recharge)
+# RCRG_byFacility = Historical_Deliveries_ForRecharge_Organized %>%
+#   select(datetime, User, Recharge.Facility, deliveries) %>%
+#   group_by(User, Recharge.Facility) %>% summarize(total_recharge = sum(deliveries)) %>%
+#   pivot_wider(names_from = User, values_from = total_recharge)
+# 
+# RCRG_byFacility2021 = Historical_Deliveries_ForRecharge_Organized %>%
+#   filter(lubridate::year(datetime) == 2021) %>% 
+#   mutate(Recharge.Facility = ifelse(Recharge.Facility %in% c("MAR 5", "MAR 1B", "MAR 6B"), "MAR", Recharge.Facility),
+#          Recharge.Facility = ifelse(Recharge.Facility %in% c("AFRP Constructed", "AFRP Managed"), "AFRP", Recharge.Facility),
+#          Recharge.Facility = ifelse(Recharge.Facility %in% c("BKW-Milewide"), "BKW", Recharge.Facility)) %>%
+#   select(datetime, User, Recharge.Facility, deliveries) %>%
+#   group_by(User, Recharge.Facility) %>% summarize(total_recharge = sum(deliveries)) %>%
+#   pivot_wider(names_from = User, values_from = total_recharge)
 
 ##  STEP 3Bb: SORT RECHARGE DELIVERIES BY AMA FOR CAPFEWS AND EXPORT  
 RCRG_byAMA = Historical_Deliveries_ForRecharge_Organized %>%
@@ -249,7 +250,7 @@ for (ama in unique(RCRG_byAMA_long$AMA)) {
 #   pivot_wider(names_from = User, values_from = total_recharge)
 
 
-## STEP 4: WIDEN THE DATA TO MAKE INPUT FILES FOR CAPFEWS
+### STEP 4: WIDEN THE DATA TO MAKE INPUT FILES FOR CAPFEWS, ADD MISSING USERS -----------------------
 ##  (for deliveries, not recharge, I want total to each user
 ##   and the splits by priority type and purpose separately)
 Historical_Deliveries_ForRecharge_Organized_Wide = Historical_Deliveries_ForRecharge_Organized %>%
@@ -289,7 +290,7 @@ Historical_Deliveries_ForRecharge_Organized_Wide = Historical_Deliveries_ForRech
 write.table(Historical_Deliveries_Organized_Wide, "user_monthly_deliveries.csv", sep = ",", row.names = FALSE, col.names = TRUE)
 write.table(Historical_Deliveries_ForRecharge_Organized_Wide, "user_monthly_deliveries_recharge.csv", sep = ",", row.names = FALSE, col.names = TRUE)
 
-## STEP 5: EXTRACT THE SEASONALITY CURVES OF DEMAND FOR MAJOR USERS
+### STEP 5: EXTRACT THE SEASONALITY CURVES OF DEMAND FOR MAJOR USERS ------------------------
 for (year in unique(lubridate::year(Historical_Deliveries_Organized_Wide$datetime))) {
   year_deliveries_by_major_user = Historical_Deliveries_Organized_Wide %>% 
     filter(lubridate::year(datetime) == year) 
@@ -311,30 +312,21 @@ year_deliveries_by_major_user_totaltable_seasonality$Month = month.abb
 write.table(year_deliveries_by_major_user_totaltable_seasonality, "user_seasonality_deliveries.csv", sep = ",", row.names = FALSE, col.names = TRUE)
 
   
-## STEP 6: EXTRACT THE FRACTION OF DELIVERIES UNDER EACH ENTITLEMENT CLASS AND PURPOSE, BY USER
-Historical_Deliveries_Organized_Normalized_ByClass_ByUse = Historical_Deliveries_Organized %>%
+### STEP 6: EXTRACT THE FRACTION OF DELIVERIES THROUGH LEASE AGREEMENTS ---------------
+  # need to grab data from the second section of data analysis to run this section
+Deliveries_ByUse = Historical_Deliveries_Organized %>%
   group_by(datetime, User, Partner, Agreement, Group) %>% summarise(total_use = sum(deliveries))
 
-## what fraction of deliveries are from each class?
-# Historical_Deliveries_Organized_Normalized_ByClass_Fraction = Historical_Deliveries_Organized_Normalized_ByClass_ByUse %>%
-#   group_by(User, Group) %>% summarise(total_use = sum(total_use)) %>%
-#   pivot_wider(names_from = Group, values_from = total_use) 
-# 
-# Historical_Deliveries_Organized_Normalized_ByClass_Fraction[,2:ncol(Historical_Deliveries_Organized_Normalized_ByClass_Fraction)] =
-#   t(apply(Historical_Deliveries_Organized_Normalized_ByClass_Fraction[,2:ncol(Historical_Deliveries_Organized_Normalized_ByClass_Fraction)], 
-#         MARGIN = 1, 
-#         function(x) {x/sum(x, na.rm = TRUE)}))
-
-## what fraction of deliveries are leases? with which partners?
-Historical_Deliveries_Organized_Normalized_ByPurpose = Historical_Deliveries_Organized_Normalized_ByClass_ByUse %>%
+## what fraction of deliveries are from each class/partner?
+Deliveries_Leased = Deliveries_ByUse %>%
   filter(Agreement %in% c("Lease")) %>%
   group_by(datetime, User, Partner, Group) %>% summarise(total_lease = sum(total_use)) %>%
 #  pivot_wider(names_from = Partner, values_from = total_lease) %>%
   select(-Group)
 
 # separate these out into files with delivered lease water and (negated) "donated" lease water
-for (leaser in unique(Historical_Deliveries_Organized_Normalized_ByPurpose$Partner)) {
-  single_leaser = Historical_Deliveries_Organized_Normalized_ByPurpose %>% 
+for (leaser in unique(Deliveries_Leased$Partner)) {
+  single_leaser = Deliveries_Leased %>% 
     filter(Partner == leaser) %>% pivot_wider(names_from = User, values_from = total_lease)
   
   # add missing users in deliveries file with zeroes
@@ -357,297 +349,99 @@ for (leaser in unique(Historical_Deliveries_Organized_Normalized_ByPurpose$Partn
 }
 
 
+### TABULATE EXISTING LEASE AGREEMENT CAPACITIES AND THEIR PRIORITY -------------
+# some background, with numbers compiled by hand:
+#  https://www.peoriaaz.gov/government/departments/water-services/water-supply
+#  Jason Hauter (lawer for GRIC) confirms only CAGRD lease is NIA Priority, rest Indian
+#  david has other pdfs of lease agreements
+Providers = c("GRIC", "SRPMIC", "Ak-Chin", "SCAT", "FMYN", "Tohono O'odham")
+Users = c("ASARCO", "CAGRD", "Chandler", "Gilbert", "Glendale", 
+          "Goodyear", "Mesa", "Peoria", "Phoenix", "Scottsdale", 
+          "Tempe", "OTHER")
+Lease_Matrix = matrix(data = NA, nrow = length(Providers), ncol = length(Users), 
+                      dimnames = list(Providers, Users))
+Lease_Priority_Matrix = matrix(data = NA, nrow = length(Providers), ncol = length(Users), 
+                               dimnames = list(Providers, Users))
 
-# what was total use by users who lease water? what was their total federal use?
-# Historical_Deliveries_Organized_Totals_ForLeasers = Historical_Deliveries_Organized_Normalized_ByClass_ByUse %>%
-#   filter(User %in% unique(Historical_Deliveries_Organized_Normalized_ByPurpose$User)) %>%
-#   group_by(User, Group) %>% summarise(total_use = sum(total_use)) %>%
-#   pivot_wider(names_from = Group, values_from = total_use) %>%
-#   mutate(total_use_all_classes = sum(across(Excess:`Ag Pool`), na.rm = TRUE)) %>%
-#   select(User, Federal, total_use_all_classes)
+# manually assign lease capacities
+Lease_Matrix["GRIC","CAGRD"] = 18185
+Lease_Matrix["GRIC","Chandler"] = 2450
+Lease_Matrix["GRIC","OTHER"] = 10000 + 12000 + 1000
+Lease_Matrix["GRIC","Goodyear"] = 7000
+Lease_Matrix["GRIC","Peoria"] = 7000
+Lease_Matrix["GRIC","Phoenix"] = 15000
+Lease_Matrix["GRIC","Scottsdale"] = 12000
 
+Lease_Matrix["SRPMIC","Chandler"] = 2586
+Lease_Matrix["SRPMIC","Gilbert"] = 4088
+Lease_Matrix["SRPMIC","Glendale"] = 1814
+Lease_Matrix["SRPMIC","Mesa"] = 1669
+Lease_Matrix["SRPMIC","Phoenix"] = 3023
+Lease_Matrix["SRPMIC","Scottsdale"] = 60
+Lease_Matrix["SRPMIC","Tempe"] = 60
 
+Lease_Matrix["SCAT","Gilbert"] = 17371
+Lease_Matrix["SCAT","Scottsdale"] = 12500
+Lease_Matrix["SCAT","OTHER"] = 14000
 
+Lease_Matrix["FMYN","Phoenix"] = 4300
 
-# combine these little files for final numbers
-# Historical_Deliveries_Organized_Normalized_ByPurpose_Combined = Historical_Deliveries_Organized_Normalized_ByPurpose
-# Historical_Deliveries_Organized_Normalized_ByPurpose_Combined$Federal = 
-#   Historical_Deliveries_Organized_Totals_ForLeasers$Federal
-# Historical_Deliveries_Organized_Normalized_ByPurpose_Combined$Total = 
-#   Historical_Deliveries_Organized_Totals_ForLeasers$total_use_all_classes
-# 
-# # ALL LEASES ARE FROM FEDERAL CLASS ENTITLEMENTS
-# # SO THESE NUMBERS ARE THE FRACTION OF FEDERAL CLASS WATER
-# # EACH USER GETS FROM LEASES
-# Leases_asFractionofFederalUse = Historical_Deliveries_Organized_Normalized_ByPurpose_Combined[,2:6] /
-#   Historical_Deliveries_Organized_Normalized_ByPurpose_Combined$Federal
-# Leases_asFractionofFederalUse$User = 
-#   Historical_Deliveries_Organized_Normalized_ByPurpose_Combined$User
-# 
-# ## what fraction of deliveries are exchanges? with which partners?
-# Historical_Deliveries_Organized_Normalized_ByPurpose = Historical_Deliveries_Organized_Normalized_ByClass_ByUse %>%
-#   filter(Agreement %in% c("Exchange")) %>%
-#   group_by(User, Partner, Group) %>% summarise(total_lease = sum(total_use)) %>%
-#   pivot_wider(names_from = Partner, values_from = total_lease) %>%
-#   select(-Group)
-# 
-# # what was total use by users who exchange water? what was their total federal use?
-# Historical_Deliveries_Organized_Totals_ForExchange = Historical_Deliveries_Organized_Normalized_ByClass_ByUse %>%
-#   filter(User %in% unique(Historical_Deliveries_Organized_Normalized_ByPurpose$User)) %>%
-#   group_by(User, Group) %>% summarise(total_use = sum(total_use)) %>%
-#   pivot_wider(names_from = Group, values_from = total_use) %>%
-#   mutate(total_use_all_classes = sum(across(Excess:`Ag Pool`), na.rm = TRUE)) %>%
-#   select(User, Federal, total_use_all_classes)
-# 
-# # combine these little files for final numbers
-# Historical_Deliveries_Organized_Normalized_ByPurpose_Combined = Historical_Deliveries_Organized_Normalized_ByPurpose
-# Historical_Deliveries_Organized_Normalized_ByPurpose_Combined$Federal = 
-#   Historical_Deliveries_Organized_Totals_ForExchange$Federal
-# Historical_Deliveries_Organized_Normalized_ByPurpose_Combined$Total = 
-#   Historical_Deliveries_Organized_Totals_ForExchange$total_use_all_classes
+Lease_Matrix["Tohono O'odham","ASARCO"] = 10000
 
-# ALL EXCHANGES ARE FROM FEDERAL CLASS ENTITLEMENTS
-# SO THESE NUMBERS ARE THE FRACTION OF FEDERAL CLASS WATER
-# EACH USER GETS FROM EXCHANGE
-# Exchanges_asFractionofFederalUse = Historical_Deliveries_Organized_Normalized_ByPurpose_Combined[,2:4] /
-#   Historical_Deliveries_Organized_Normalized_ByPurpose_Combined$Federal
-# Exchanges_asFractionofFederalUse$User = 
-#   Historical_Deliveries_Organized_Normalized_ByPurpose_Combined$User
+Lease_Matrix["Ak-Chin","OTHER"] = 7356
 
-## STEP 7: IDENTIFY WHAT FRACTION OF MAJOR USER DELIVERIES ARE DIVERTED FOR 
-##   RECHARGE IN EACH MONTH
-##  EDIT: DID THIS BY GENERATING MATCHING SPREADSHEETS THAT CAN BE DIVIDED BY EACH OTHER WHEN MAKING JSON FILES
-# fraction_recharge = Historical_Deliveries_ForRecharge_Organized_Wide[,-c(1)] / Historical_Deliveries_Organized_Wide[,-c(1)]
-# fraction_recharge[is.na(fraction_recharge)] = 0
-# 
-# fraction_recharge$Month = lubridate::month(Historical_Deliveries_Organized_Wide$datetime)
-# fraction_recharge = fraction_recharge %>% select(Month, everything())
-# fraction_recharge_seasonality = fraction_recharge %>% group_by(Month) %>% 
-#   summarise(across(everything(), list(mean)))
-# colnames(fraction_recharge_seasonality) = colnames(fraction_recharge)
+# manually assign lease priorities - everything Indian Priority except 2 cases
+Lease_Priority_Matrix[!is.na(Lease_Matrix)] = "FED"
+Lease_Priority_Matrix["GRIC","CAGRD"] = "NIA"
+Lease_Priority_Matrix["Tohono O'odham","ASARCO"] = "NIA"
 
-# annual summary for each user
-#apply(fraction_recharge_seasonality, MARGIN = 2, mean)
+# convert to dataframes for ease of indexing
+Lease_Matrix = as.data.frame(Lease_Matrix); Lease_Matrix$Partner = Providers
+Lease_Priority_Matrix = as.data.frame(Lease_Priority_Matrix); Lease_Priority_Matrix$Partner = Providers
+Lease_Matrix = Lease_Matrix %>% arrange(Partner)
+Lease_Priority_Matrix = Lease_Priority_Matrix %>% arrange(Partner)
 
-### -----------------------------------------------------
-## Collect major contractor historical deliveries
-##  and organize by priority, lease, banking/storage
-##  (initially just tracked top-14 historical largest,
-##   then added others that show up consistently)
+# match these tables against deliveries to see what fraction of lease capacity is
+# delivered in 2021 vs. on average since 2016
+Deliveries_Leased_2021 = Deliveries_ByUse %>%
+  filter(lubridate::year(datetime) > 2020) %>%
+  filter(Agreement %in% c("Lease")) %>%
+  group_by(User, Partner, Group) %>% summarise(total_lease = sum(total_use)) %>% # 1 year of data annualized
+  pivot_wider(names_from = User, values_from = total_lease) %>%
+  select(-Group) %>% mutate("ASARCO" = NA) %>% select(colnames(Lease_Matrix)) %>% arrange(Partner)
+Deliveries_Leased_2021[6,] = NA; Deliveries_Leased_2021$Partner[6] = "Tohono O'odham"; Deliveries_Leased_2021$ASARCO[6] = 10000
+rownames(Deliveries_Leased_2021) = Deliveries_Leased_2021$Partner
 
-# group into these major contractors
-# and the rest are lumped into 'OTHER' 
-major_contractors = list(
-  c("ACIC", "Ak-Chin Indian Community", "Ak-Chin", "Ak-Chin IC", "Ak Chin Indian Community", "Ak Chin IC", "Ak Chin Farm"),
-  c("AWBA", "Arizona Water Banking Authority"),
-  c("CAIDD", "Central Arizona IDD", "Central AZ IDD", "CAID", "Central Arizona ID", "Central AZ ID"),
-  c("CAGRD", "Central Arizona GRD"),
-  c("Gilbert", "Town of Gilbert"),
-  c("GRIC", "Gila River Indian Community", "Gila River IC", "Gila River"),
-  c("Mesa", "Mesa, City of"),
-  c("MSIDD", "Maricopa Stanfield IDD", "Maricopa-Stanfield", "Maricopa Stanfield"),
-  c("Peoria", "City of Peoria"),
-  c("Phoenix", "Phoenix, City of", "City of Phoenix", "PHX"),
-  c("SCAT", "San Carlos Apache Nation", "SCAN", "SCIC", "San Carlos IC", "San Carlos AT", "San Carlos"),
-  c("Scottsdale", "City of Scottsdale"),
-  c("TOIC", "Tohono Oodham Indian Nation", "Tohono O'odham Indian Nation", "Tohono", "TOIN", "Tohono IC"),
-  c("Tucson", "Tucson, City of"),
-  
-  c("SRPMIC", "Salt River Pima"),
-  c("Chandler"),
-  c("Glendale", "Glendale, City of"),
-  c("Tempe"),
-  c("HIDD", "HID", "Hohokam"),
-  c("HVIDD", "HVID", "Harquahala Valley IDD", "Harquahala Valley ID"),
-  c("SCIDD", "San Carlos IDD"),
-  c("Welton", "Welton-Mohawk", "Wellton-Mohawk"),
-  c("CMID", "CMIDD", "Cortaro Marana Irrigation District"),
-  c("TIDD", "Tonopah ID", "TID"),
-  c("MWD", "Maricopa Water District"),
-  c("NMIDD", "New Magma IDD", "New Magma", "NMID")
-)
-
-
-check_totals_in_2008 = 0; check_totals_in_2021 = 0
-all_contractors = c()
-for (user in major_contractors) {
-  # collect deliveries for each subcontractor
-  contractor_deliveries = Historical_Deliveries[
-    as.logical(rowSums(sapply(user, grepl, Historical_Deliveries$Variable))) |
-      as.logical(rowSums(sapply(user, grepl, Historical_Deliveries$Subgroup))),]
-  
-  # to ensure we aren't counting columns we don't want, check for 
-  # unexpected values and clean them
-  # print(unique(contractor_deliveries$Group))
-  # print(unique(contractor_deliveries$Section))
-  contractor_deliveries = contractor_deliveries %>%
-    filter(Group != "FLOW AT CS19 (CFS)") %>%
-    filter(Section != "TOTAL SYSTEM DELIVERIES") %>%
-    filter(Total != 0) %>% mutate(Total = as.numeric(as.character(Total)))
-  
-  # REMOVE LEASE, EXCHANGE, SETTLEMENT, ASSIGNMENT COLUMNS FROM THE DELIVERY DATA
-  contractor_deliveries = contractor_deliveries[!as.logical(rowSums(sapply(
-    c("lease", "Lease", "settlement", "Settlement", "Exchange", "exchange",
-      "Assignment", "assignment"), grepl, contractor_deliveries$Variable))),]
-   
-  # and aggregate deliveries by priority type and month/year
-  # and account for outliers in the data as we go
-  contractor_deliveries_aggregated = contractor_deliveries %>% 
-    mutate(Group = ifelse(Group == "Arizona Water Co. (Coolidge) W/CAIDD" |
-                            Group == "Maricopa Water District Lake Water(**)(@)" |
-                            Group == "Maricopa Water District Lake Water (MWD**)" |
-                            Group == "Maricopa Water District Lake Water (**)", "MUNICIPAL & INDUSTRIAL:", Group)) %>% 
-    mutate(Group = ifelse(Group == "RECHARGE1:", "RECHARGE:", Group)) %>% 
-    mutate(Group = ifelse(Group == "Salt River Project XS ($XX/AF) w/CAIDD" |
-                            Group == "Salt River Project XS ($XX/AF) w/MSIDD" |
-                            Group == "Salt River Project XS ($10/AF) w/MSIDD" |
-                            Group == "Salt River Project XS ($10/AF) w/CAIDD" |
-                            Group == "Salt River Project XS ($48/AF) w/MSIDD" |
-                            Group == "Salt River Project XS w/CAIDD" |
-                            Group == "Salt River Project XS w/MSIDD", "EXCESS:", Group)) %>% 
-    mutate(Group = ifelse(Group == "Ag Pool Redistribution/Remarket (+/-)", "AGRICULTURAL:", Group)) %>% 
-    group_by(Year, Group) %>% 
-    summarise(across(c(Jan:Mar, Apr:Jun, Jul:Sep, Oct:Dec), function(x) {sum(as.numeric(as.character(x)), na.rm = TRUE)})) %>%
-    mutate(Subcontractor = user[1])
-    
-  # add to full list holding all the contractors
-  all_contractors = rbind(all_contractors, contractor_deliveries_aggregated)
-    
-  # sanity check - do we need to account for more users specifically?
-  check_totals_in_2008 = check_totals_in_2008 + 
-    sum(as.numeric(as.character(contractor_deliveries$Total[which(contractor_deliveries$Year == 2008)])), na.rm = TRUE)
-  check_totals_in_2021 = check_totals_in_2021 + 
-    sum(as.numeric(as.character(contractor_deliveries$Total[which(contractor_deliveries$Year == 2021)])), na.rm = TRUE)
+Lease_Use_Fraction_Of_Capacity = as.data.frame(Deliveries_Leased_2021)
+for (row in 1:nrow(Lease_Use_Fraction_Of_Capacity)) {
+  for (col in 1:(ncol(Lease_Use_Fraction_Of_Capacity)-1)) {
+    if (is.na(Lease_Use_Fraction_Of_Capacity[row,col])) {} else {
+      Lease_Use_Fraction_Of_Capacity[row,col] = signif(as.numeric(Lease_Use_Fraction_Of_Capacity[row,col]) / Lease_Matrix[row,col],
+                                                       digits = 2)
+    }
+  }
 }
+rownames(Lease_Use_Fraction_Of_Capacity) = Lease_Use_Fraction_Of_Capacity$Partner
 
-# what fraction of total CAP deliveries in 2008 are to these 14 major contractors + others? in 2021?
-# because of the double-counting of many lease or exchanges, these values are inflated
-print(paste("Fraction of deliveries to top 14+ contractors in 2008: ", 
-            as.character(check_totals_in_2008 / 
-                           sum(Historical_CAPDiversion_Organized$CAP_div[
-                             which(format(Historical_CAPDiversion_Organized$datetime, format = "%Y") == "2008")])), sep = ""))
-print(paste("Fraction of deliveries to top 14+ contractors in 2021: ", 
-            as.character(check_totals_in_2021 / 
-                           sum(Historical_CAPDiversion_Organized$CAP_div[
-                             which(format(Historical_CAPDiversion_Organized$datetime, format = "%Y") == "2021")])), sep = ""))
+# correct fractional use estimates based on wider range of historic values
+# ex: 2021 Phoenix did not use very much of their lease with FMYN, but in other years did
+Deliveries_Leased_Avg = Deliveries_ByUse %>%
+  filter(Agreement %in% c("Lease")) %>%
+  group_by(User, Partner, Group) %>% summarise(total_lease = sum(total_use)/6) %>% # 6 years of data annualized
+  pivot_wider(names_from = User, values_from = total_lease) %>%
+  select(-Group)
 
-# clean up full sets, make them "long" then organize
-ac_long = all_contractors %>% 
-  pivot_longer(cols = -c('Year', 'Subcontractor', 'Group'), names_to = 'Month', values_to = 'del') %>%
-  mutate(Month = match(Month, month.abb)) %>%
-  mutate(datetime = lubridate::make_datetime(year = Year, month = Month)) %>% ungroup() %>%
-  select(datetime, Group, Subcontractor, del)
+Lease_Use_Fraction_Of_Capacity$Phoenix[which(Lease_Use_Fraction_Of_Capacity$Partner == "FMYN")] = 
+  signif(Deliveries_Leased_Avg$Phoenix[which(Deliveries_Leased_Avg$Partner == "FMYN")] / 
+         Lease_Matrix$Phoenix[which(Lease_Matrix$Partner == "FMYN")], digits = 2)
 
-Historical_Deliveries_ByContractor_ByPriorityClass_Organized = ac_long %>% 
-  mutate(del = ifelse(del == 0, NA, del)) %>%
-  pivot_wider(names_from = c(Subcontractor, Group), values_from = del)
-
-# clean up column headers for readability in the code
-colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
-  sub(":", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
-colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
-  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
-colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
-  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
-colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
-  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
-colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
-  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
-colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
-  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
-colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized) = 
-  sub(" ", "", colnames(Historical_Deliveries_ByContractor_ByPriorityClass_Organized))
+# export these results to build json files
+write.table(Lease_Matrix, "user_lease.csv", sep = ",", row.names = FALSE, col.names = TRUE)
+write.table(Lease_Priority_Matrix, "user_lease_priorities.csv", sep = ",", row.names = FALSE, col.names = TRUE)
+write.table(Lease_Use_Fraction_Of_Capacity, "user_lease_fractions.csv", sep = ",", row.names = FALSE, col.names = TRUE)
 
 
-## manage leases - who gives them and who gets them, sorted by subcontractor and priority group
-# leases can only be given from Tribal users to others, so will need to identify
-#   ORIGINATORS (tribes) vs RECIPIENTS (M&I, usually) within a loop
-all_leases = Historical_Deliveries[as.logical(rowSums(sapply(
-  c("lease", "Lease", "settlement", "Settlement", "Exchange", "exchange",
-    "Assignment", "assignment"), grepl, Historical_Deliveries$Variable))),]
-all_leases = all_leases %>% filter(Total != 0)
-
-lease_originators = list(
-  c("SRPMIC"), c("SCAT"), c("FMYN", "Fort McDowell"), c("GRIC"), c("Ak-Chin"))
-lease_recipients = list(
-  c("Tucson", "SAVSARP", "CAVSARP"), c("CAIDD"), c("CAGRD"), c("Gilbert"),
-  c("OTHERS", minor_contractors))
-
-GW_AMAs = list(
-  c("Phoenix AMA",
-      "GRUSP",
-      "AFRP", "Agua Fria",
-      "HRF", "Hassayampa RF",
-      "HMRP", "Hieroglyphic",
-      "TDRP", "Tonopah",
-      "SMRP", "Superstition",
-      "CHCID", "Chandler ID",
-      "MWD", "Maricopa Water District",
-      "NMIDD", "New Magma",
-      "QCIDD", "Queen Creek",
-      "SRP", "Salt River Project", # need to include exception to remove SRPMIC
-      "RWCD", "Roosevelt",
-      "TID", "Tonopah", # is it the RP or ID? will have to screen for this
-      "PHX", "GRIIDD", "GRIC GSF", "Gila River Indian IDD"),
-  c("Pinal AMA", 
-      "CAIDD", 
-      "HIDD", "Hohokam", 
-      "MSIDD", 
-      "GRIIDD", "GRIC GSF", "Gila River Indian IDD"),
-  c("Tucson AMA", 
-      "ASARCO", 
-      "CMID", 
-      "Kai Farms", 
-      "BKW Farms", 
-      "PMRP", "Pima Mine Road RP", 
-      "LSCRP", "Lower Santa Cruz RP", 
-      "SAVSARP", 
-      "CAVSARP",
-      "AVRP", "Avra Valley RP"),
-)
-
-
-
-
-
-
-
-
-
-
-## check other contractors, do they have many leases, big fraction of deliveries?
-minor_contractors = list(
-  c("Avondale"),
-  c("Buckeye"),
-  c("Bureau of Reclamation", "BOR"),
-  c("BKW Farms", "BKW"),
-  c("Arizona Water Co."),
-  c("ADOT", "Arizona Department of Transportation", "Arizona State Land Dept"),
-  c("SRP", "Salt River Project"),
-  c("Goodyear"),
-  c("Metro Water", "Metro"),
-  c("Marana"),
-  c("Oro Valley"),
-  c("RWCD", "Roosevelt"),
-  c("Spanish Trail"),
-  c("Surprise"),
-  c("QCID", "Queen Creek ID", "Queen Creek Irrigation District"),
-  c("Tonto Hills"),
-  c("FMYN", "Fort McDowell Yavapai Nation", "Yavapai"),
-  c("EPCOR"),
-  c("Eloy"),
-  c("El Mirage"),
-  c("Chaparral", "Chaparral City WC"),
-  c("Carefree WC", "Carefree"),
-  c("Cave Creek WC", "Cave Creek"),
-  c("ASARCO")
-)
-
-
-
-
-### -----------------------------------------------------
-## Collect historic water delivery rate components
+### Collect historic water delivery rate components ---------------------------------
 ##  and reconciliation rate updates
 Historical_Rates_Organized = Historical_Rates[
     as.logical(rowSums(sapply(c("rate", "Rate"), grepl, Historical_Rates$Group))),]
@@ -669,8 +463,7 @@ Historical_Rates_Organized = Historical_Rates_Organized %>%
   select(datetime, Group, Variable, rate) %>%
   pivot_wider(names_from = c(Variable, Group), values_from = rate)
 
-### -----------------------------------------------------
-## Collect historic power market energy prices
+### Collect historic power market energy prices -------------------------------------
 ##  and pumped water quantities 
 Historical_PumpingEnergy_Organized = Historical_PowerUse %>%
   filter(Table == "CAP Pumping Plants - Projection of Energy Use - For Waddell Filling Only" |
@@ -678,46 +471,19 @@ Historical_PumpingEnergy_Organized = Historical_PowerUse %>%
            Table == "CAP Pumping Plants - Projection of Energy Use")
 
  
-### -----------------------------------------------------
-## collect entitlement info for CAP contractors
-entitlements = list()
-entitlements[[1]] = c("Ak-Chin",        "AWBA",           "AZWC",           "CAGRD",          "CAIDD",
-                      "Chandler",       "Gilbert",        "Glendale",       "GRIC",           "HIDD",     
-                      "HVID",           "Mesa",           "MSIDD",          "OTHER",          "Peoria",         
-                      "Phoenix", "SCAT","Scottsdale",     "Tempe",          "Tohono O'odham", "Tucson")
+### Collect and aggregate entitlement info for CAP contractors --------------------------
 ##  total in each delivery priority class
 #     classes: M&I, NIA, Indian, P3
 #     numbers from: CAP Subcontracting Status Report - April 2022
 #       totals for 2022: TOTAL = 1,294,717 AF
 #                          M&I =   620,678 
-#                          NIA =    44,530 +  47,303 +  5,000 + 102,000 + 18,100 + 50,000 + 16,000
-#                       Indian =   555,806 +     500          - 102,000 - 18,100 - 50,000 - 16,000
+#                          NIA =    44,530 +  47,303 +  5,000 + 102,000 + 18,100 + 16,000
+#                       Indian =   555,806 +     500          - 102,000 - 18,100 - 16,000 - 50,000
 #                           P3 =    22,000 (Wellton-Mohawk IDD, 20,900 AF after system loss)
 #                                 + 50,000 (Ak-Chin, 47,500 AF after system loss)
 #     Several users here (Ag users) have no P3 or P4 rights:
 #       AWBA, CAIDD, HIDD, HVID, MSIDD deliveries
 #       are ENTIRELY of excess CAP water (Ag/Excess Pool)
-entitlements[[2]] = list(c(0, 0, 27500, 50000),  #Ak-Chin
-                         c(0, 0, 0, 0),  #AWBA
-                         c(6285 + 8884 + 2000 + 968, 0, 0, 0), #AZWC
-                         c(6426, 18185, 0, 0), #CAGRD
-                         c(0, 0, 0, 0), #CAIDD
-                         c(8654, 2952 + 972, 0, 4278), #Chandler
-                         c(7235, 1832 + 1537, 0, 6762), #Gilbert
-                         c(17236, 682, 0, 3000), #Glendale
-                         c(0, 102000 + 18100, 173100 + 18600, 0), #GRIC
-                         c(0, 0, 0, 0), #HIDD
-                         c(0, 0, 0, 0), #HVID
-                         c(43503, 4924 + 627, 0, 2760), #Mesa
-                         c(0, 0, 0, 0), #MSIDD
-                         c(NA, NA, NA, NA), #OTHER - total M&I MUST CALCULATE
-                         c(27121, 0, 0, 0), #Peoria
-                         c(122204, 36144 + 1136, 0, 5000), #Phoenix
-                         c(14665 + 3480, 0, 30800 + 12700, 0), #SCAT
-                         c(52810, 3283 + 23, 500, 100), #Scottsdale
-                         c(4315, 23, 0, 100), #Tempe
-                         c(0, 27000 + 23000 + 10800 + 5200, 8000, 0), #Tohono O'odham
-                         c(144191, 0, 0, 0)) #Tucson
 
 # OCT 2022: Current Entitlements are also available by priority class
 # here: https://library.cap-az.com/maps/capallocations
@@ -787,11 +553,30 @@ entitlement_values$NIA[which(entitlement_values$User == "OTHER")] =
   NIA_total_entitlement - sum(entitlement_values$NIA)
 
 # export the numbers and the fractions of total entitlement classes
+# with code names for capfews, ordered alphabetically
+entitlement_values = entitlement_values %>% arrange(User)
+UsersCodes = c("AKC", "ASR", "AWB", "ASL", "AWC", "CGD", "CAD",
+               "CHD", "EPC", "FYN", "GIL", "GLN", "GYR", "GRC", 
+               "HID", "HVD", "MSA", "MSD", "MWD", "ORO", "OTH",
+               "PEO", "PHX", "SCT", "SDL", "SIC", "SUR", "TPE",
+               "TOH", "TUC", "WMT")
+UsersTurnouts = c("SGL", "BLK", "SGL", "HSY", "SGL", "SGL", "SGL", 
+                  "SGL", "HSY", "HSY", "SGL", "HSY", "HSY", "SGL",
+                  "SGL", "LHQ", "SGL", "SGL", "HSY", "PIC", "SGL",
+                  "HSY", "HSY", "HSY", "HSY", "HSY", "HSY", "HSY",
+                  "BRW", "BRW", "HSY")
+entitlement_values$Code = UsersCodes
+entitlement_values$Turnout = UsersTurnouts
+
 write.table(entitlement_values, "user_entitlements.csv", sep = ",", row.names = FALSE, col.names = TRUE)
 
 entitlement_values_norm = apply(entitlement_values[,2:5], 2, function(x) {x/sum(x)})
-entitlement_values_norm = data.frame(entitlement_values$User, entitlement_values_norm)
+entitlement_values_norm = data.frame("User" = entitlement_values$User, 
+                                     entitlement_values_norm, 
+                                     "Code" = entitlement_values$Code, 
+                                     "Turnout" = entitlement_values$Turnout)
 write.table(entitlement_values_norm, "user_entitlements_fractions.csv", sep = ",", row.names = FALSE, col.names = TRUE)
+
 
 
 # calculate OTHER category for each priority class

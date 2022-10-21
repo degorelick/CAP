@@ -15,7 +15,7 @@ library(jsonlite)
 # turnouts named by pumping plant immediately "upstream"
 # only turnouts where top users have action are included
 # final capacity node is always zero - a dummy to tell model to recycle
-turnout_names = c("LHQ", "WAD", "HSY", "SGL", "BRD", "RED", "SAN", "BRW", "SND", "BLK", "none")
+turnout_names = c("LHQ", "WAD", "HSY", "SGL", "BRD", "PIC", "RED", "SAN", "BRW", "SND", "BLK", "none")
 
 # capacity of turnouts to move water. turnouts can have "normal" "reverse" and "closed" settings
 # only Waddell (WAD) can go normal and reverse (fill and spill from Lake Pleasant)
@@ -40,15 +40,15 @@ write(canal_json, "../CAPFEWS/calfews_src/canals/CAP_properties.json")
 
 ### Write Contracts JSONs -------------------------------
 ## write JSON for CAP canal contractors rights (contracts)
-## write a separate contract for each CAP water priority class (P3, M&I, Indian, NIA, Ag, Excess)
+## write a separate contract for each CAP water priority class (P3, M&I, Indian, NIA)
 ##  Ag and Excess will have priority zero - not filled until others satisfied
 entitlement_totals = read.csv("user_entitlements.csv", header = TRUE)
 entitlement_totals_normalized = read.csv("user_entitlements_fractions.csv", header = TRUE)
-entitlement_totals = rbind(entitlement_totals, data.frame(V1 = c(0, 0), Class = c("AGR", "EXC")))
+#entitlement_totals = rbind(entitlement_totals, data.frame(V1 = c(0, 0), Class = c("AGR", "EXC")))
 
-for (contract_class in c("PTR", "MUI", "FED", "NIA", "AGR", "EXC")) {
+for (contract_class in c("PTR", "MUI", "FED", "NIA")) {
   contract = list("name" = contract_class, 
-                  "total" = entitlement_totals$V1[which(entitlement_totals$Class == contract_class)]/1000, # converted to kAF 
+                  "total" = sum(entitlement_totals[,contract_class])/1000, # converted to kAF 
                   "maxForecastValue" = 999999,
                   "carryover" = 0,
                   "type" = "contract",
@@ -78,38 +78,20 @@ AnnualDemand = UserDemandMonthly %>%
 MaxAnnualDemand = apply(AnnualDemand,2,max)
 
 # also read in entitlements, to assign contract fractions
-entitlement_totals = read.csv("CAP_priorityclass_entitlementtotals2022.csv", header = FALSE)
-entitlement_totals$Class = c("PTR", "MUI", "FED", "NIA")
-entitlement_totals = rbind(entitlement_totals, data.frame(V1 = c(0, 0), Class = c("AGR", "EXC")))
+entitlement_totals = read.csv("user_entitlements.csv", header = TRUE)
 
-# prepare matching vectors to link contract holders to their CAPFEWS codes
-# and turnouts where they receive water
-UsersToKeep = c("AWBA", "FMYN", "WMAT", "SRPMIC",
-                "Ak-Chin", "GRIC", "SCAT", "Tohono.O.odham", 
-                "HIDD", "HVID", "AZWC", "CAGRD", "CAIDD", "MSIDD", "ASARCO",
-                "Chandler", "Gilbert", "Glendale", "Mesa", "Peoria", "AZ.State.Land",
-                "Phoenix", "Scottsdale", "Tempe", "Tucson", "Surprise", "Goodyear", "OTHER")
-UsersCodes = c("AWB", "FYN", "WMT", "SIC",
-               "AKC", "GRC", "SCT", "TOH",
-               "HID", "HVD", "AWC", "CGD", "CAD", "MSD", "ASR",
-               "CHD", "GIL", "GLN", "MSA", "PEO", "ALD",
-               "PHX", "SDL", "TPE", "TUC", "SUR", "GYR", "OTH")
-UsersTurnouts = c()
 
 i = 1
-for (d in UsersToKeep) {
-  print(paste(d, " is matched with ", UsersCodes[i], sep = ""))
-  district = list("name" = UsersCodes[i], 
+for (d in entitlement_totals$Code) {
+  district = list("name" = d, 
                   "MDD" = MaxAnnualDemand[which(names(MaxAnnualDemand) == d)]/1000, # converted to kAF 
-                  "contract_list" = c("PTR", "MUI", "FED", "NIA", "AGR", "EXC"),
+                  "contract_list" = c("PTR", "MUI", "FED", "NIA"),
                   "turnout_list" = c("CAP"), # connected to the cap canal, the canal object json holds the spatial relations
                   "urban_profile" = c(UserDemandSeasonality[which(names(UserDemandSeasonality) == d)])[[1]],
                   "project_contract" = list("PTR" = 0,
                                             "MUI" = 0,
                                             "FED" = 0,
-                                            "NIA" = 0,
-                                            "AGR" = 1,
-                                            "EXC" = 1))
+                                            "NIA" = 0))
   
   districts_json = toJSON(district, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
   write(districts_json, paste("../CAPFEWS/calfews_src/districts/", contract_class, "_properties.json", sep = ""))
