@@ -194,25 +194,14 @@ Historical_Deliveries_ForRecharge_Organized = Historical_Deliveries_ForRecharge 
 ###  STEP 3B: SORT RECHARGE DELIVERIES BY FACILITY FOR CAPFEWS AND EXPORT  ------------
 ## NOTE: THIS IS REPLACED BY AGGREGATING BY AMA FOR CAPFEWS, DONE BELOW
 
-# RCRG_byFacility = Historical_Deliveries_ForRecharge_Organized %>%
-#   select(datetime, User, Recharge.Facility, deliveries) %>%
-#   group_by(User, Recharge.Facility) %>% summarize(total_recharge = sum(deliveries)) %>%
-#   pivot_wider(names_from = User, values_from = total_recharge)
-# 
-# RCRG_byFacility2021 = Historical_Deliveries_ForRecharge_Organized %>%
-#   filter(lubridate::year(datetime) == 2021) %>% 
-#   mutate(Recharge.Facility = ifelse(Recharge.Facility %in% c("MAR 5", "MAR 1B", "MAR 6B"), "MAR", Recharge.Facility),
-#          Recharge.Facility = ifelse(Recharge.Facility %in% c("AFRP Constructed", "AFRP Managed"), "AFRP", Recharge.Facility),
-#          Recharge.Facility = ifelse(Recharge.Facility %in% c("BKW-Milewide"), "BKW", Recharge.Facility)) %>%
-#   select(datetime, User, Recharge.Facility, deliveries) %>%
-#   group_by(User, Recharge.Facility) %>% summarize(total_recharge = sum(deliveries)) %>%
-#   pivot_wider(names_from = User, values_from = total_recharge)
-
 ##  STEP 3Bb: SORT RECHARGE DELIVERIES BY AMA FOR CAPFEWS AND EXPORT  
 RCRG_byAMA = Historical_Deliveries_ForRecharge_Organized %>%
   select(datetime, User, AMA, deliveries) %>%
   group_by(datetime, User, AMA) %>% summarize(total_recharge = sum(deliveries)) %>%
   pivot_wider(names_from = User, values_from = total_recharge)
+
+write.table(RCRG_byAMA, 
+            paste("AMA_deliveries_recharge_byAMA.csv", sep = ""), sep = ",", row.names = FALSE, col.names = TRUE)
 
 RCRG_byAMA_long = Historical_Deliveries_ForRecharge_Organized %>%
   select(datetime, User, AMA, deliveries) %>%
@@ -243,11 +232,104 @@ for (ama in unique(RCRG_byAMA_long$AMA)) {
               paste(ama, "AMA_deliveries_recharge.csv", sep = ""), sep = ",", row.names = FALSE, col.names = TRUE)
 }
 
-# RCRG_byAMA2021 = Historical_Deliveries_ForRecharge_Organized %>%
-#   filter(lubridate::year(datetime) == 2021) %>% 
-#   select(datetime, User, AMA, deliveries) %>%
-#   group_by(datetime, User, AMA) %>% summarize(total_recharge = sum(deliveries)) %>%
-#   pivot_wider(names_from = User, values_from = total_recharge)
+# also print total recharge deliveries, to later calculate the fraction
+# of deliveries made to each AMA by user, and their seasonality
+RCRG_total = Historical_Deliveries_ForRecharge_Organized %>%
+  select(datetime, User, deliveries) %>%
+  group_by(datetime, User) %>% summarize(total_recharge = sum(deliveries)) %>%
+  pivot_wider(names_from = User, values_from = total_recharge)
+# add missing users in deliveries file with zeroes
+for (missing_user in setdiff(UsersToKeep, colnames(RCRG_total))) {
+  if (missing_user %in% colnames(RCRG_total)) {} else {
+    RCRG_total[, missing_user] = 0
+  }
+}
+RCRG_total = RCRG_total[,which(colnames(RCRG_total) != "AMA")]
+
+RCRG_total = RCRG_total %>%
+  select(order(colnames(RCRG_total))) %>%
+  select(datetime, everything()) %>%
+  replace(is.na(RCRG_total), 0)
+RCRG_total[is.na(RCRG_total)] = 0
+
+# export these
+write.table(RCRG_total, 
+            paste("AMA_total_deliveries_recharge.csv", sep = ""), sep = ",", row.names = FALSE, col.names = TRUE)
+
+# calculate seasonality of recharge deliveries
+RCRG_seasonality = Historical_Deliveries_ForRecharge_Organized %>% 
+  mutate(Month = lubridate::month(datetime)) %>%
+  select(Month, User, deliveries) %>%
+  group_by(Month, User) %>% summarize(total_recharge = sum(deliveries)) %>%
+  pivot_wider(names_from = User, values_from = total_recharge)
+RCRG_seasonality = apply(RCRG_seasonality, 2, function(x) {x/sum(x, na.rm = TRUE)})
+
+# add missing users in deliveries file with zeroes
+RCRG_seasonality = as.data.frame(RCRG_seasonality)
+for (missing_user in setdiff(UsersToKeep, colnames(RCRG_seasonality))) {
+  if (missing_user %in% colnames(RCRG_seasonality)) {} else {
+    RCRG_seasonality[, missing_user] = 0
+  }
+}
+RCRG_seasonality = RCRG_seasonality %>%
+  select(order(colnames(RCRG_seasonality))) %>%
+  select(Month, everything()) %>%
+  replace(is.na(RCRG_seasonality), 0)
+RCRG_seasonality[is.na(RCRG_seasonality)] = 0
+
+# give month column its names back
+RCRG_seasonality$Month = month.abb
+
+# export these
+write.table(RCRG_seasonality, 
+            paste("user_deliveries_recharge_seasonality.csv", sep = ""), sep = ",", row.names = FALSE, col.names = TRUE)
+
+# calculate fraction of deliveries each user sends to recharge, by calendar month (seasonality average)
+DEL_seasonality = Historical_Deliveries_Organized %>% 
+  mutate(Month = lubridate::month(datetime)) %>%
+  select(Month, User, deliveries) %>%
+  group_by(Month, User) %>% summarize(total_recharge = sum(deliveries)) %>%
+  pivot_wider(names_from = User, values_from = total_recharge)
+RCRG_seasonality = Historical_Deliveries_ForRecharge_Organized %>% 
+  mutate(Month = lubridate::month(datetime)) %>%
+  select(Month, User, deliveries) %>%
+  group_by(Month, User) %>% summarize(total_recharge = sum(deliveries)) %>%
+  pivot_wider(names_from = User, values_from = total_recharge)
+
+# make datasets match, then compare
+for (missing_user in setdiff(UsersToKeep, colnames(RCRG_seasonality))) {
+  if (missing_user %in% colnames(RCRG_seasonality)) {} else {
+    RCRG_seasonality[, missing_user] = 0
+  }
+}
+RCRG_seasonality = RCRG_seasonality %>%
+  select(order(colnames(RCRG_seasonality))) %>%
+  select(Month, everything()) %>%
+  replace(is.na(RCRG_seasonality), 0)
+RCRG_seasonality[is.na(RCRG_seasonality)] = 0
+
+for (missing_user in setdiff(UsersToKeep, colnames(DEL_seasonality))) {
+  if (missing_user %in% colnames(DEL_seasonality)) {} else {
+    DEL_seasonality[, missing_user] = 0
+  }
+}
+DEL_seasonality = DEL_seasonality %>%
+  select(order(colnames(DEL_seasonality))) %>%
+  select(Month, everything()) %>%
+  replace(is.na(DEL_seasonality), 0)
+DEL_seasonality[is.na(DEL_seasonality)] = 0
+
+# find the fractional recharging
+RCRG_seasonality_fraction = RCRG_seasonality / DEL_seasonality
+RCRG_seasonality_fraction[is.na(RCRG_seasonality_fraction)] = 0
+
+# give month column its names back
+RCRG_seasonality_fraction$Month = month.abb
+
+# export these
+write.table(RCRG_seasonality_fraction, 
+            paste("user_deliveries_recharge_seasonality_fraction.csv", sep = ""), sep = ",", row.names = FALSE, col.names = TRUE)
+
 
 
 ### STEP 4: WIDEN THE DATA TO MAKE INPUT FILES FOR CAPFEWS, ADD MISSING USERS -----------------------
@@ -504,9 +586,9 @@ for (name in unique(rights$DavidName)) {
   user = as.data.frame(t(as.data.frame(colSums(user[,2:5]))))
   
   # update a handful of entitlements
-  if (user == "CAGRD") {
+  if (name == "CAGRD") {
     user$M.I.Priority.Volume. = "6426"
-    user$NIA.Priority.Volume. = "18185"
+    user$NIA.Priority.Volume. = "18185" # THERE IS ACTUALLY A GRIC LEASE OF THE EXACT SAME SIZE AS WELL...
   }
   
   entitlement_values = rbind(entitlement_values,
@@ -576,26 +658,3 @@ entitlement_values_norm = data.frame("User" = entitlement_values$User,
                                      "Code" = entitlement_values$Code, 
                                      "Turnout" = entitlement_values$Turnout)
 write.table(entitlement_values_norm, "user_entitlements_fractions.csv", sep = ",", row.names = FALSE, col.names = TRUE)
-
-
-
-# calculate OTHER category for each priority class
-# by calculating fraction of each priority class use
-# entitlements are for named users and assign remaining
-# entitlements of the priority class to OTHER
-# ---
-# EDIT THIS IS REPLACED ABOVE BY SUMMING THE ENTITLEMENT FILES
-# ---
-# MaIpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[1]/MUI_total_entitlement})), na.rm = TRUE)
-# NIApri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[2]/NIA_total_entitlement})), na.rm = TRUE)
-# FEDpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[3]/FED_total_entitlement})), na.rm = TRUE)
-# PTRpri_frac = sum(unlist(lapply(entitlements[[2]], function(x) {x[4]/PTR_total_entitlement})), na.rm = TRUE)
-# 
-# entitlements[[2]][[14]][1] = MUI_total_entitlement * (1 - MaIpri_frac)
-# entitlements[[2]][[14]][2] = NIA_total_entitlement * (1 - NIApri_frac)
-# entitlements[[2]][[14]][3] = FED_total_entitlement * (1 - FEDpri_frac)
-# entitlements[[2]][[14]][4] = PTR_total_entitlement * (1 - PTRpri_frac)
-# 
-# write.table(c(PTR_total_entitlement, MUI_total_entitlement, FED_total_entitlement, NIA_total_entitlement),
-#             "CAP_priorityclass_entitlementtotals2022.csv", sep = ",", row.names = FALSE, col.names = FALSE)
-
