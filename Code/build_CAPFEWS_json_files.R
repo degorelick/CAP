@@ -6,7 +6,7 @@
 
 rm(list=ls()) # clear memory
 setwd('C:/Users/dgorelic/OneDrive - University of North Carolina at Chapel Hill/UNC/Research/IM3/CAP/Data') # set directory
-library(jsonlite)
+library(jsonlite); library(dplyr)
 
 ### Write Canal JSON ------------------------------------
 ## write JSON for CAP canal capacities, etc
@@ -39,7 +39,9 @@ write(canal_json, "../CAPFEWS/calfews_src/canals/CAP_properties.json")
 
 
 
-### Write Contracts JSONs -------------------------------
+
+
+### Write Contracts (Subcontractor Entitlements) JSONs -------------------------------
 ## write JSON for CAP canal contractors rights (contracts)
 ## write a separate contract for each CAP water priority class (P3, M&I, Indian, NIA)
 ##  Ag and Excess will have priority zero - not filled until others satisfied
@@ -66,7 +68,8 @@ for (contract_class in c("PTR", "MUI", "FED", "NIA")) {
 
 
 
-### Write District JSONs --------------------------------
+
+### Write District (Subcontractor) JSONs --------------------------------
 ## write JSON for CAP canal contractors (districts)
 ## each user needs its own JSON file 
 library(dplyr)
@@ -136,7 +139,8 @@ for (d in entitlement_totals$Code) {
 
 
 
-### Write Recharge Facility JSONs -----------------------
+
+### Write Waterbank (Recharge Facility) JSONs -----------------------
 ## write JSON for CAP recharge projects (banks)
 ## where users can divert and store deliveries to accumulate credits
 AMA_turnouts = data.frame("AMA" = c("Phoenix", "Pinal", "Tucson"),
@@ -186,6 +190,122 @@ for (ama in AMA_turnouts$AMA) {
   waterbanks_json = toJSON(ama_file, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
   write(waterbanks_json, paste("../CAPFEWS/calfews_src/banks/", ama_code, "_properties.json", sep = ""))
 }
+
+
+
+### Write Reservoir JSONs -----------------------------------
+
+# lake pleasant monthly guide curve is estimated by me based on 2022 water level projections
+# from: https://www.cap-az.com/water/cap-system/water-operations/lake-pleasant/
+pleasant_elevation_capacity = 1702 # ft
+pleasant_storage_capacity = 850244 # in AF
+pleasant_unusable_storage = 37841 # in AF
+pleasant_MWDaccount_capacity = 157600 # in AF
+pleasant_CAPaccount_capacity = 
+  pleasant_storage_capacity - pleasant_MWDaccount_capacity - pleasant_unusable_storage
+
+pleasant_monthly_elevation_projections = # in ft
+  c(1681.8, 1686.8, 1691.7, 1692.8, 1693.5, 1685.7,
+    1674.2, 1658.6, 1654.2, 1655.1, 1659.8, 1662.7)
+pleasant_monthly_gaged_inflow_projections = # in AF/month
+  c(3500, 3500, 2200, 1500, 0, 0,
+    1200, 1200, 1200, 2000, 2000, 2300)
+pleasant_monthly_net_evap_projections = # in inches
+  c(1.6, 1.7, 4.1, 6.7, 10.0, 11.0,
+    10.3, 9.0, 7.3, 3.25, 3.4, 2.0)
+pleasant_monthly_seepage_projections = # in inches
+  c(62, 56, 62, 60, 62, 60,
+    62, 62, 60, 62, 60, 62)
+pleasant_monthly_MWDlakewater_projections = # in AF, exchanged deliveries to MWD
+  c(470, 635, 2235, 3411, 3529, 2765,
+    3117, 1529, 2588, 3764, 941, 0)
+
+# from table of elevations and storage, create a storage calculation function
+# used excel to get a rough polynomial storage function:
+#  Volume = 28846633 + -18579.4*Elevation + -12.8222*Elevation^2 + 0.008269*Elevation^3
+pleasant_table = read.csv("Pleasant_StorageToElevation_Chart.csv", header = TRUE)
+plot(pleasant_table$Elevation_ft, pleasant_table$Volume_AF)
+get_pleasant_volume_from_elevation = function(elev, intercept, a1, a2, a3) {
+  volume = intercept + a1 * elev + a2 * elev^2 + a3 * elev^3
+  return(volume)
+}
+lines(pleasant_table$Elevation_ft, 
+      get_pleasant_volume_from_elevation(pleasant_table$Elevation_ft,
+                                         28846633, -18579.4, -12.8222, 0.008269),
+      col = "red")
+
+# similarly:
+# Elevation = 1542.36 + 0.000413939*Vol + -4.77E-10*Vol^2 + 2.502E-16*Vol^3
+# Area = -3580975 + 6574.7*Elev + -4.0501*Elev^2 + 0.0008383*Elev^3
+
+# operating parameters for New Waddell Dam that connects pleasant to the CAP canal
+waddell_pumping_capacity = 3000 # cubic ft per sec: https://www.usbr.gov/lc/phoenix/projects/waddelldamproj.html
+waddell_generation_capacity = 40 # MW of power: https://knowyourwaternews.com/reliability-in-the-shadows/
+
+# additional lake pleasant details from "cap_water_forecast 2021.xslm" spreadsheet:
+# tabs "B" and "Lake Pleasant Forecast"
+# to calculate CAP storage:
+#  (1) find total storage:
+pleasant_endof2020_CAP_storage = 479341 # in AF
+pleasant_endof2020_total_storage = 648953 # in AF, includes unusable storage
+#     previous-year total storage + Agua Fria inflow + CAP pumping - Evap - CAP releases - flood release/spill +/- seepage
+#  (2) subtract dead and inactive storage
+#  (3) estimate CAP storage, based on MWD storage?
+#
+
+
+# natual inflows to lake pleasant from Agua Fria river:
+# https://waterdata.usgs.gov/monitoring-location/09512500/#parameterCode=00065&period=P7D
+# https://waterdata.usgs.gov/nwis/inventory?site_no=09512500&agency_cd=USGS
+# to be consistent for future simulation, I will rely on repeated annual projections 
+# from the CAP Lake Pleasant forecast
+n_months = 12
+carryover_frac = 0.65
+Pleasant = list("name" = "Lake Pleasant",
+                "capacity" = pleasant_storage_capacity/1000, # in kAF
+                "has_downstream_target_flow" = FALSE,
+                "env_min_flow" = 
+                  list("I" = rep(0, n_months), 
+                       "IIa" = rep(0, n_months), 
+                       "IIb" = rep(0, n_months), 
+                       "III" = rep(0, n_months), 
+                       "IV" = rep(0, n_months)),
+                "temp_releases" = 
+                  list("I" = rep(0, n_months), 
+                       "IIa" = rep(0, n_months), 
+                       "IIb" = rep(0, n_months), 
+                       "III" = rep(0, n_months), 
+                       "IV" = rep(0, n_months)),
+                "carryover_target" = list("I" = pleasant_storage_capacity * carryover_frac/1000, # a round number, based on last 3 years of EOY storage
+                                          "IIa" = pleasant_storage_capacity * carryover_frac/1000, 
+                                          "IIb" = pleasant_storage_capacity * carryover_frac/1000, 
+                                          "III" = pleasant_storage_capacity * carryover_frac/1000, 
+                                          "IV" = pleasant_storage_capacity * carryover_frac/1000), 
+                "max_outflow" = 150000, # in kAF
+                "dead_pool" = pleasant_unusable_storage/1000, # in kAF
+                "seepage" = pleasant_monthly_seepage_projections/1000, # in kAF
+                "evap" = pleasant_monthly_net_evap_projections/1000, # in kAF
+                "gaged_inflow" = pleasant_monthly_gaged_inflow_projections/1000, # in kAF
+                "MWD_inflow" = pleasant_monthly_MWDlakewater_projections/1000, # in kAF
+                "CAP_capacity" = pleasant_CAPaccount_capacity/1000, # in kAF
+                "pump_inflow_capacity" = waddell_pumping_capacity, # in cfs
+                "hydropower_generation_capacity" = waddell_generation_capacity) # in MW
+pleasant_json = toJSON(Pleasant, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
+write(pleasant_json, paste("../CAPFEWS/calfews_src/reservoir/", "PLS", "_properties.json", sep = ""))
+
+# collect lake mead information - really just the info about translating elevation
+# and shortage tier into CAP water availability
+Mead = list("name" = "Lake Mead",
+            "capacity" = 999999,
+            "az_capacity" = 2800, # in kAF/yr
+            "az_availability" = list("I" = 2800 - 512, # in kAF/yr
+                                          "IIa" = 2800 - 592, 
+                                          "IIb" = 2800 - 640, 
+                                          "III" = 2800 - 720, 
+                                          "IV" = 2800 - 1400),
+            "az_on_river_demand" = 1300) # in kAF/yr
+mead_json = toJSON(Mead, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
+write(mead_json, paste("../CAPFEWS/calfews_src/reservoir/", "MDE", "_properties.json", sep = ""))
 
 
 ### Hold other code that may be helpful --------------------------------
