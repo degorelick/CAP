@@ -65,26 +65,26 @@ Historical_PleasantElevation_Organized = Historical_PowerUse %>%
 Historical_PleasantInflow_Organized = Historical_CAPDiversion %>% 
   filter(Group == "WADDELL PUMPING") %>%
   select(Jan:Mar, Apr:Jun, Jul:Sep, Oct:Dec, Year) %>%
-  pivot_longer(cols = -starts_with('Year'), names_to = 'Month', values_to = 'PLS_inf') %>% 
+  pivot_longer(cols = -starts_with('Year'), names_to = 'Month', values_to = 'PLS_pumping') %>% 
   mutate(Month = match(Month, month.abb)) %>%
   mutate(datetime = lubridate::make_datetime(year = Year, month = Month)) %>%
-  select(datetime, PLS_inf)
+  select(datetime, PLS_pumping)
 
 Historical_PleasantOutflow_Organized = Historical_CAPDiversion %>% 
   filter(Group == "WADDELL RELEASES") %>%
   select(Jan:Mar, Apr:Jun, Jul:Sep, Oct:Dec, Year) %>%
-  pivot_longer(cols = -starts_with('Year'), names_to = 'Month', values_to = 'PLS_out') %>% 
+  pivot_longer(cols = -starts_with('Year'), names_to = 'Month', values_to = 'PLS_hydrorelease') %>% 
   mutate(Month = match(Month, month.abb)) %>%
   mutate(datetime = lubridate::make_datetime(year = Year, month = Month)) %>%
-  select(datetime, PLS_out) %>% mutate(PLS_out = PLS_out * -1)
+  select(datetime, PLS_hydrorelease) %>% mutate(PLS_hydrorelease = PLS_hydrorelease * -1)
 
 Historical_CAPCanalLosses_Organized = Historical_CAPDiversion %>% 
   filter(Group == "TOTAL CANAL LOSSES") %>%
   select(Jan:Mar, Apr:Jun, Jul:Sep, Oct:Dec, Year) %>%
-  pivot_longer(cols = -starts_with('Year'), names_to = 'Month', values_to = 'CAP_los') %>% 
+  pivot_longer(cols = -starts_with('Year'), names_to = 'Month', values_to = 'CAP_losses') %>% 
   mutate(Month = match(Month, month.abb)) %>%
   mutate(datetime = lubridate::make_datetime(year = Year, month = Month)) %>%
-  select(datetime, CAP_los)
+  select(datetime, CAP_losses)
 
 
 # OUTPUT DATA TABLE FOR INITIAL CAPFEWS TESTS

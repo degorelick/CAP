@@ -57,11 +57,12 @@ for (contract_class in c("PTR", "MUI", "FED", "NIA")) {
                   "type" = "contract",
                   "allocation_priority" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1),
                   "storage_priority" = 1,
-                  "reduction" = list("I" = 1, 
-                                     "IIa" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0.5, no = 1), 
-                                     "IIb" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1), 
-                                     "III" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1), 
-                                     "IV" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1)))
+                  "reduction" = list("T0" = 1,
+                                     "T1" = 1, 
+                                     "T2a" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0.5, no = 1), 
+                                     "T2b" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1), 
+                                     "T3" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1), 
+                                     "DP" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1)))
   contract_json = toJSON(contract, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
   write(contract_json, paste("../CAPFEWS/calfews_src/contracts/", contract_class, "_properties.json", sep = ""))
 }
@@ -265,29 +266,32 @@ Pleasant = list("name" = "Lake Pleasant",
                 "capacity" = pleasant_storage_capacity/1000, # in kAF
                 "has_downstream_target_flow" = FALSE,
                 "env_min_flow" = 
-                  list("I" = rep(0, n_months), 
-                       "IIa" = rep(0, n_months), 
-                       "IIb" = rep(0, n_months), 
-                       "III" = rep(0, n_months), 
-                       "IV" = rep(0, n_months)),
+                  list("T0" = rep(0, n_months),
+                       "T1" = rep(0, n_months), 
+                       "T2a" = rep(0, n_months), 
+                       "T2b" = rep(0, n_months), 
+                       "T3" = rep(0, n_months), 
+                       "DP" = rep(0, n_months)),
                 "temp_releases" = 
-                  list("I" = rep(0, n_months), 
-                       "IIa" = rep(0, n_months), 
-                       "IIb" = rep(0, n_months), 
-                       "III" = rep(0, n_months), 
-                       "IV" = rep(0, n_months)),
-                "carryover_target" = list("I" = pleasant_storage_capacity * carryover_frac/1000, # a round number, based on last 3 years of EOY storage
-                                          "IIa" = pleasant_storage_capacity * carryover_frac/1000, 
-                                          "IIb" = pleasant_storage_capacity * carryover_frac/1000, 
-                                          "III" = pleasant_storage_capacity * carryover_frac/1000, 
-                                          "IV" = pleasant_storage_capacity * carryover_frac/1000), 
+                  list("T0" = rep(0, n_months),
+                       "T1" = rep(0, n_months), 
+                       "T2a" = rep(0, n_months), 
+                       "T2b" = rep(0, n_months), 
+                       "T3" = rep(0, n_months), 
+                       "DP" = rep(0, n_months)),
+                "carryover_target" = list("T0" = pleasant_storage_capacity * carryover_frac/1000,
+                                          "T1" = pleasant_storage_capacity * carryover_frac/1000, # a round number, based on last 3 years of EOY storage
+                                          "T2a" = pleasant_storage_capacity * carryover_frac/1000, 
+                                          "T2b" = pleasant_storage_capacity * carryover_frac/1000, 
+                                          "T3" = pleasant_storage_capacity * carryover_frac/1000, 
+                                          "DP" = pleasant_storage_capacity * carryover_frac/1000), 
                 "max_outflow" = 150000, # in kAF
                 "dead_pool" = pleasant_unusable_storage/1000, # in kAF
                 "seepage" = pleasant_monthly_seepage_projections/1000, # in kAF
                 "evap" = pleasant_monthly_net_evap_projections/1000, # in kAF
                 "gaged_inflow" = pleasant_monthly_gaged_inflow_projections/1000, # in kAF
                 "MWD_inflow" = pleasant_monthly_MWDlakewater_projections/1000, # in kAF
-                "CAP_capacity" = pleasant_CAPaccount_capacity/1000, # in kAF
+                "cap_allocation_capacity" = pleasant_CAPaccount_capacity/1000, # in kAF
                 "pump_inflow_capacity" = waddell_pumping_capacity, # in cfs
                 "hydropower_generation_capacity" = waddell_generation_capacity) # in MW
 pleasant_json = toJSON(Pleasant, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
@@ -298,11 +302,13 @@ write(pleasant_json, paste("../CAPFEWS/calfews_src/reservoir/", "PLS", "_propert
 Mead = list("name" = "Lake Mead",
             "capacity" = 999999,
             "az_capacity" = 2800, # in kAF/yr
-            "az_availability" = list("I" = 2800 - 512, # in kAF/yr
-                                          "IIa" = 2800 - 592, 
-                                          "IIb" = 2800 - 640, 
-                                          "III" = 2800 - 720, 
-                                          "IV" = 2800 - 1400),
+            "cap_allocation_capacity" = 1600, # in kAF/yr
+            "az_availability" = list("T0" = 2800,
+                                     "T1" = 2800 - 512, # in kAF/yr
+                                     "T2a" = 2800 - 592, 
+                                     "T2b" = 2800 - 640, 
+                                     "T3" = 2800 - 720, 
+                                     "DP" = 2800 - 1400),
             "az_on_river_demand" = 1300) # in kAF/yr
 mead_json = toJSON(Mead, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
 write(mead_json, paste("../CAPFEWS/calfews_src/reservoir/", "MDE", "_properties.json", sep = ""))
