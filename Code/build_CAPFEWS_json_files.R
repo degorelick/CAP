@@ -47,22 +47,88 @@ write(canal_json, "../CAPFEWS/calfews_src/canals/CAP_properties.json")
 ##  Ag and Excess will have priority zero - not filled until others satisfied
 entitlement_totals = read.csv("user_entitlements.csv", header = TRUE)
 entitlement_totals_normalized = read.csv("user_entitlements_fractions.csv", header = TRUE)
-#entitlement_totals = rbind(entitlement_totals, data.frame(V1 = c(0, 0), Class = c("AGR", "EXC")))
+
+# estimate how many entitlements remain in each priority class under each DCP shortage tier
+NIA_unentitled_reserve = 119065 # from 2022 subcontracting status report, uncontracted
+full_entitlement_year = sum(apply(entitlement_totals[,2:5], 2, sum)) + NIA_unentitled_reserve
+T0_entitlement_year = full_entitlement_year - 192000
+T1_entitlement_year = full_entitlement_year - 512000
+T2a_entitlement_year = full_entitlement_year - 592000
+T2b_entitlement_year = full_entitlement_year - 640000
+T3_entitlement_year = full_entitlement_year - 720000
+
+# determine reductions by shortage tier
+P3_entitlement_total = sum(entitlement_totals$PTR)
+MUI_entitlement_total = sum(entitlement_totals$MUI)
+FED_entitlement_total = sum(entitlement_totals$FED)
+NIA_entitlement_total = sum(entitlement_totals$NIA) + NIA_unentitled_reserve
+
+mui_fed_total = MUI_entitlement_total + FED_entitlement_total
+
+p3_mui_fed_total = P3_entitlement_total + MUI_entitlement_total + FED_entitlement_total
+
+T0_NIA_fraction_remaining = 1 - 192000/NIA_entitlement_total
+
+T1_NIA_fraction_remaining = 0
+T1_MUI_fraction_remaining = 1 - ((512000 - NIA_entitlement_total) * (MUI_entitlement_total/mui_fed_total))/MUI_entitlement_total
+T1_FED_fraction_remaining = 1 - ((512000 - NIA_entitlement_total) * (FED_entitlement_total/mui_fed_total))/FED_entitlement_total
+
+T2a_NIA_fraction_remaining = 0
+T2a_MUI_fraction_remaining = 1 - ((592000 - NIA_entitlement_total) * (MUI_entitlement_total/mui_fed_total))/MUI_entitlement_total
+T2a_FED_fraction_remaining = 1 - ((592000 - NIA_entitlement_total) * (FED_entitlement_total/mui_fed_total))/FED_entitlement_total
+
+T2b_NIA_fraction_remaining = 0
+T2b_MUI_fraction_remaining = 1 - ((640000 - NIA_entitlement_total) * (MUI_entitlement_total/mui_fed_total))/MUI_entitlement_total
+T2b_FED_fraction_remaining = 1 - ((640000 - NIA_entitlement_total) * (FED_entitlement_total/mui_fed_total))/FED_entitlement_total
+
+T3_NIA_fraction_remaining = 0
+T3_MUI_fraction_remaining = 1 - ((720000 - NIA_entitlement_total) * (MUI_entitlement_total/mui_fed_total))/MUI_entitlement_total
+T3_FED_fraction_remaining = 1 - ((720000 - NIA_entitlement_total) * (FED_entitlement_total/mui_fed_total))/FED_entitlement_total
 
 for (contract_class in c("PTR", "MUI", "FED", "NIA")) {
+  entitlement_water = sum(entitlement_totals[,contract_class])/1000
+  if (contract_class == "NIA") {
+    entitlement_water = sum(entitlement_totals[,contract_class])/1000 + NIA_unentitled_reserve/1000
+  }
   contract = list("name" = contract_class, 
-                  "total" = sum(entitlement_totals[,contract_class])/1000, # converted to kAF 
-                  "maxForecastValue" = 999999,
+                  "total" = entitlement_water, # converted to kAF 
+                  "maxForecastValue" = entitlement_water,
                   "carryover" = 0,
                   "type" = "contract",
                   "allocation_priority" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1),
                   "storage_priority" = 1,
-                  "reduction" = list("T0" = 1,
-                                     "T1" = 1, 
-                                     "T2a" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0.5, no = 1), 
-                                     "T2b" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1), 
-                                     "T3" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1), 
-                                     "DP" = ifelse(test = contract_class %in% c("AGR", "EXC"), yes = 0, no = 1)))
+                  "reduction" = list("T0" = ifelse(test = contract_class %in% c("MUI", "FED"), 
+                                                   yes = 1, 
+                                                   no = ifelse(test = contract_class %in% c("NIA"), 
+                                                               yes = T0_NIA_fraction_remaining, # NIA
+                                                               no = 1)), #P3,
+                                     "T1" = ifelse(test = contract_class %in% c("MUI", "FED"), 
+                                                   yes = T1_MUI_fraction_remaining, 
+                                                   no = ifelse(test = contract_class %in% c("NIA"), 
+                                                               yes = 0, # NIA
+                                                               no = 1)), #P3, 
+                                     "T2a" = ifelse(test = contract_class %in% c("MUI", "FED"), 
+                                                    yes = T2a_MUI_fraction_remaining, 
+                                                    no = ifelse(test = contract_class %in% c("NIA"), 
+                                                                yes = 0, # NIA
+                                                                no = 1)), #P3
+                                     "T2b" = ifelse(test = contract_class %in% c("MUI", "FED"), 
+                                                    yes = T2b_MUI_fraction_remaining, 
+                                                    no = ifelse(test = contract_class %in% c("NIA"), 
+                                                                yes = 0, # NIA
+                                                                no = 1)), #P3
+                                     "T3" = ifelse(test = contract_class %in% c("MUI", "FED"), 
+                                                   yes = T3_MUI_fraction_remaining, 
+                                                   no = ifelse(test = contract_class %in% c("NIA"), 
+                                                               yes = 0, # NIA
+                                                               no = 1)), #P3 
+                                     "DP" = ifelse(test = contract_class %in% c("MUI", "FED"), 
+                                                   yes = 0.5, 
+                                                   no = ifelse(test = contract_class %in% c("NIA"), 
+                                                               yes = 0, # NIA
+                                                               no = 1))) #P3 
+                    )
+  
   contract_json = toJSON(contract, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
   write(contract_json, paste("../CAPFEWS/calfews_src/contracts/", contract_class, "_properties.json", sep = ""))
 }
@@ -119,7 +185,8 @@ for (d in entitlement_totals$Code) {
   if (district_full_name == "CAGRD") {priority_to_recharge = 1}
   
   district = list("name" = district_full_name, 
-                  "MDD" = MaxAnnualDemand[which(names(MaxAnnualDemand) == district_full_name)]/1000, # converted to kAF 
+                  "MDD" = 0,
+                  "AFY" = MaxAnnualDemand[which(names(MaxAnnualDemand) == district_full_name)]/1000, # converted to kAF 
                   "contract_list" = c("PTR", "MUI", "FED", "NIA"),
                   "turnout_list" = c("CAP"), # connected to the cap canal, the canal object json holds the spatial relations
                   "urban_profile" = c(UserDemandSeasonality[which(names(UserDemandSeasonality) == district_full_name)])[[1]],
