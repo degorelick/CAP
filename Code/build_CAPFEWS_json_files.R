@@ -168,6 +168,20 @@ entitlement_fractions = read.csv("user_entitlements_fractions.csv", header = TRU
 leases_amount = read.csv("user_lease.csv", header = TRUE)
 lease_priority = read.csv("user_lease_priorities.csv", header = TRUE)
 
+# set Ag Mitigation Agreement Parameters for select subcontractors
+ag_mitigation_trigger_tiers = c("T1", "T2a", "T2b")
+ag_mitigation_donor_list = c("PXA", "PNA", "TSA") # water comes first from stored M&I AMA GSF water
+ag_mitigation_taker_list = c("CID", "HID", "HVD", "MSD", "OTH")
+ag_mitigation_taker_fractions = c(0.34, 0.11, 0.10, 0.33, 0.12)
+ag_mitigation_quantity_tiers = c(105000, 70000, 70000)
+
+# set NIA Mitigation Agreement Parameters for select subcontractors
+# NIA mitigation water that is unclaimed may be then used for Ag Mitigation...
+nia_mitigation_trigger_tiers = c("T1", "T2a", "T2b")
+nia_mitigation_donor_list = c("PLS") # extra water released from Lake Pleasant as needed, up to 50k AF
+nia_mitigation_taker_list = c(entitlement_totals$Code[which(entitlement_totals$NIA != 0)]) # any NIA user
+nia_mitigation_quantity_tiers = c(1, 1, 1) # Mitigation water will be used to fulfill ALL NIA priority deliveries
+
 # build the JSON files
 for (d in entitlement_totals$Code) {
   district_full_name = entitlement_totals$User[which(entitlement_totals$Code == d)]
@@ -198,7 +212,13 @@ for (d in entitlement_totals$Code) {
                   "lease_partner" = c(district_lease_partners),
                   "lease_quantity" = c(district_lease_quantity),
                   "lease_priority" = c(district_lease_priority),
-                  "priority_to_recharge" = c(priority_to_recharge) 
+                  "priority_to_recharge" = c(priority_to_recharge),
+                  "must_take_mead" = ifelse(test = entitlement_totals$Turnout[which(entitlement_totals$Code == d)] %in%
+                                              c("LHQ"), yes = TRUE, no = FALSE),
+                  "ag_mitigation_triggers" = ag_mitigation_trigger_tiers,
+                  "ag_mitigation_donor" = FALSE,
+                  "ag_mitigation_taker" = FALSE,
+                  "ag_mitigation_quantity" = ag_mitigation_quantity_tiers * district_mitigation_fraction
                   )
   
   districts_json = toJSON(district, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
@@ -287,6 +307,9 @@ pleasant_monthly_seepage_projections = # in inches
 pleasant_monthly_MWDlakewater_projections = # in AF, exchanged deliveries to MWD
   c(470, 635, 2235, 3411, 3529, 2765,
     3117, 1529, 2588, 3764, 941, 0)
+pleasant_monthly_CAPDiversionPumping_projections = # in fraction of CAP diversion
+  c(0.57, 0.53, 0.25, 0.12, 0.025, 0,
+    0, 0, 0.15, 0.13, 0.56, 0.39)
 
 # from table of elevations and storage, create a storage calculation function
 # used excel to get a rough polynomial storage function:
@@ -358,7 +381,9 @@ Pleasant = list("name" = "Lake Pleasant",
                 "evap" = pleasant_monthly_net_evap_projections/1000, # in kAF
                 "gaged_inflow" = pleasant_monthly_gaged_inflow_projections/1000, # in kAF
                 "MWD_inflow" = pleasant_monthly_MWDlakewater_projections/1000, # in kAF
+                "cap_diversion_pump_frac" = pleasant_monthly_CAPDiversionPumping_projections, # fraction of diversion
                 "cap_allocation_capacity" = pleasant_CAPaccount_capacity/1000, # in kAF
+                "pleasant_target_elev" = pleasant_monthly_elevation_projections, # in ft
                 "pump_inflow_capacity" = waddell_pumping_capacity, # in cfs
                 "hydropower_generation_capacity" = waddell_generation_capacity) # in MW
 pleasant_json = toJSON(Pleasant, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
