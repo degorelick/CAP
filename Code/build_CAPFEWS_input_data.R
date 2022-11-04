@@ -94,7 +94,8 @@ cap_data = Historical_MeadElevation_Organized %>%
   left_join(Historical_PleasantOutflow_Organized, by = 'datetime') %>%
   left_join(Historical_CAPDiversion_Organized, by = 'datetime') %>%
   left_join(Historical_CAPCanalLosses_Organized, by = 'datetime')
-write.table(cap_data, "../CAPFEWS/calfews_src/data/input/cap-data.csv", sep = ",", row.names = FALSE, col.names = TRUE)
+cap_data_short = cap_data %>% filter(lubridate::year(datetime) > 2012)
+write.table(cap_data_short, "../CAPFEWS/calfews_src/data/input/cap-data.csv", sep = ",", row.names = FALSE, col.names = TRUE)
 
 ### Collect Historic Contractor Delivery Data -----------------------------------------------------
 ## Collect major contractor historical deliveries

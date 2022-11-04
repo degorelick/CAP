@@ -33,7 +33,10 @@ turnout = data.frame(normal = normal_capacities[1:(length(normal_capacities)-1)]
                      closed = closed_capacities[1:(length(closed_capacities)-1)])
 
 ## write the final json
-canal_json = toJSON(list("name" = "CAP", "capacity" = capacities, "turnout" = turnout), 
+canal_json = toJSON(list("name" = "CAP",
+                         "annual_diversion_capacity" = 1600, # in kAF/yr
+                         "capacity" = capacities, 
+                         "turnout" = turnout), 
                     pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
 write(canal_json, "../CAPFEWS/calfews_src/canals/CAP_properties.json")
 
@@ -139,7 +142,6 @@ for (contract_class in c("PTR", "MUI", "FED", "NIA")) {
 ### Write District (Subcontractor) JSONs --------------------------------
 ## write JSON for CAP canal contractors (districts)
 ## each user needs its own JSON file 
-library(dplyr)
 
 # read in demand data, extract annual delivery request growth trends and 2021 levels
 UserDemandSeasonality = read.csv("user_seasonality_deliveries.csv", header = TRUE)
@@ -153,12 +155,20 @@ AnnualDemand = UserDemandMonthly %>%
   group_by(Year) %>% summarise_at(vars(`Ak-Chin`:WMAT), sum)
 MaxAnnualDemand = apply(AnnualDemand,2,max)
 
+# also get AMAs that each district can recharge to
+UserDemandRecharge = read.csv("AMA_deliveries_recharge_byAMA.csv", header = TRUE)
+UserDemandRecharge[is.na(UserDemandRecharge)] = 0
+
+ama_users = UserDemandRecharge %>% group_by(AMA) %>% summarise(across(-datetime, sum))
+ama_users_frac = as.data.frame(apply(ama_users[,2:ncol(ama_users)], 2, function(x) {round(x/sum(x),digits = 1)}))
+ama_users_frac$AMA = ama_users$AMA
+colnames(ama_users_frac)[c(1,11,18)] = c("Ak-Chin", "Oro Valley", "Tohono O'odham")
+
 # read in recharge seasonality and fraction of total deliveries
 UserDemandRecharge = read.csv("AMA_total_deliveries_recharge.csv", header = TRUE)
 UserDemandRechargeMonthly = read.csv("user_deliveries_recharge_seasonality.csv", header = TRUE)
 UserDemandRechargeMonthlyFraction = read.csv("user_deliveries_recharge_seasonality_fraction.csv", header = TRUE)
 colnames(UserDemandRechargeMonthlyFraction)[c(2,5,21,30)] = c("Ak-Chin", "AZ State Land", "Oro Valley", "Tohono O'odham")
-
 
 # also read in entitlements, to assign contract fractions
 entitlement_totals = read.csv("user_entitlements.csv", header = TRUE)
@@ -182,6 +192,10 @@ nia_mitigation_donor_list = c("PLS") # extra water released from Lake Pleasant a
 nia_mitigation_taker_list = c(entitlement_totals$Code[which(entitlement_totals$NIA != 0)]) # any NIA user
 nia_mitigation_quantity_tiers = c(1, 1, 1) # Mitigation water will be used to fulfill ALL NIA priority deliveries
 
+AMA_turnouts = data.frame("AMA" = c("Phoenix", "Pinal", "Tucson"),
+                          "Code" = c("PXA", "PNA", "TSA"),
+                          "Turnout" = c("HSY", "SGL", "BRW"))
+
 # build the JSON files
 for (d in entitlement_totals$Code) {
   district_full_name = entitlement_totals$User[which(entitlement_totals$Code == d)]
@@ -194,6 +208,14 @@ for (d in entitlement_totals$Code) {
     district_lease_priority = lease_priority[,district_full_name][which(!is.na(leases_amount[,district_full_name]))]
   }
   
+  # collect the names of AMAs that a district uses
+  ama_used = as.list("none")
+  ama_share = as.list(0.0)
+  if (district_full_name %in% colnames(ama_users_frac)) {
+    ama_used = AMA_turnouts$Code[which(AMA_turnouts$AMA %in% ama_users_frac$AMA[which(ama_users_frac[,district_full_name] != 0)])]
+    ama_share = ama_users_frac[which(ama_users_frac[,district_full_name] != 0), district_full_name]
+  }
+  
   # if CAGRD, priority is recharge, otherwise not
   priority_to_recharge = 0 # 0: meet non-recharge demands first - 1: meet recharge goals first
   if (district_full_name == "CAGRD") {priority_to_recharge = 1}
@@ -202,23 +224,25 @@ for (d in entitlement_totals$Code) {
                   "MDD" = 0,
                   "AFY" = MaxAnnualDemand[which(names(MaxAnnualDemand) == district_full_name)]/1000, # converted to kAF 
                   "contract_list" = c("PTR", "MUI", "FED", "NIA"),
-                  "turnout_list" = c("CAP"), # connected to the cap canal, the canal object json holds the spatial relations
+                  "turnout_list" = as.list("CAP"), # connected to the cap canal, the canal object json holds the spatial relations
                   "urban_profile" = c(UserDemandSeasonality[which(names(UserDemandSeasonality) == district_full_name)])[[1]],
                   "recharge_profile" = c(UserDemandRechargeMonthlyFraction[which(names(UserDemandRechargeMonthlyFraction) == district_full_name)])[[1]],
                   "project_contract" = list("PTR" = entitlement_fractions$PTR[which(entitlement_fractions$User == district_full_name)],
                                             "MUI" = entitlement_fractions$MUI[which(entitlement_fractions$User == district_full_name)],
                                             "FED" = entitlement_fractions$FED[which(entitlement_fractions$User == district_full_name)],
                                             "NIA" = entitlement_fractions$NIA[which(entitlement_fractions$User == district_full_name)]),
-                  "lease_partner" = c(district_lease_partners),
-                  "lease_quantity" = c(district_lease_quantity),
-                  "lease_priority" = c(district_lease_priority),
+                  "lease_partner" = as.list(district_lease_partners),
+                  "lease_quantity" = as.list(district_lease_quantity),
+                  "lease_priority" = as.list(district_lease_priority),
                   "priority_to_recharge" = c(priority_to_recharge),
                   "must_take_mead" = ifelse(test = entitlement_totals$Turnout[which(entitlement_totals$Code == d)] %in%
                                               c("LHQ"), yes = TRUE, no = FALSE),
-                  "ag_mitigation_triggers" = ag_mitigation_trigger_tiers,
-                  "ag_mitigation_donor" = FALSE,
-                  "ag_mitigation_taker" = FALSE,
-                  "ag_mitigation_quantity" = ag_mitigation_quantity_tiers * district_mitigation_fraction
+                  # "ag_mitigation_triggers" = ag_mitigation_trigger_tiers,
+                  # "ag_mitigation_donor" = FALSE,
+                  # "ag_mitigation_taker" = FALSE,
+                  "ama_used" = as.list(ama_used),
+                  "ama_share" = as.list(ama_share),
+                  "zone" = "zone15" # THIS IS FOR CROP/IRRIGATION PURPOSES - CAP MODEL DOESN'T USE THIS INFORMATION SO IT DEFAULTS TO CA VALUES AND IGNORES THEM
                   )
   
   districts_json = toJSON(district, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
@@ -266,7 +290,7 @@ for (ama in AMA_turnouts$AMA) {
   
   # build the JSON for each AMA and export to CAPFEWS
   ama_file = list("name" = paste(ama, "AMA", sep = " "), 
-                  "canal_rights" = c("CAP"),
+                  "canal_rights" = as.list("CAP"),
                   "participant_list" = c(ama_user_codes),
                   "initial_recharge" = initial_recharge,
                   "tot_storage" = tot_storage,
@@ -395,12 +419,12 @@ Mead = list("name" = "Lake Mead",
             "capacity" = 999999,
             "az_capacity" = 2800, # in kAF/yr
             "cap_allocation_capacity" = 1600, # in kAF/yr
-            "az_availability" = list("T0" = 2800,
-                                     "T1" = 2800 - 512, # in kAF/yr
-                                     "T2a" = 2800 - 592, 
-                                     "T2b" = 2800 - 640, 
-                                     "T3" = 2800 - 720, 
-                                     "DP" = 2800 - 1400),
+            # "az_availability" = list("T0" = 2800,
+            #                          "T1" = 2800 - 512, # in kAF/yr
+            #                          "T2a" = 2800 - 592, 
+            #                          "T2b" = 2800 - 640, 
+            #                          "T3" = 2800 - 720, 
+            #                          "DP" = 2800 - 1400),
             "az_on_river_demand" = 1300) # in kAF/yr
 mead_json = toJSON(Mead, pretty = TRUE, dataframe = "columns", simplifyDataFrame = TRUE, auto_unbox = TRUE)
 write(mead_json, paste("../CAPFEWS/calfews_src/reservoir/", "MDE", "_properties.json", sep = ""))
