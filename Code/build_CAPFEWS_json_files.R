@@ -204,8 +204,22 @@ for (d in entitlement_totals$Code) {
   district_lease_priority = c("none")
   if (district_full_name %in% colnames(leases_amount)) {
     district_lease_partners = leases_amount$Partner[which(!is.na(leases_amount[,district_full_name]))]
-    district_lease_quantity = leases_amount[,district_full_name][which(!is.na(leases_amount[,district_full_name]))]
+    district_lease_quantity = leases_amount[,district_full_name][which(!is.na(leases_amount[,district_full_name]))]/1000
     district_lease_priority = lease_priority[,district_full_name][which(!is.na(leases_amount[,district_full_name]))]
+  }
+  
+  # if this subcontractor is providing leases to others, negate lease amounts to remove it from their availability
+  if (district_full_name %in% unique(leases_amount$Partner)) {
+    district_lease_partners = colnames(leases_amount)[which(!is.na(leases_amount[which(leases_amount$Partner == district_full_name),]))]
+    district_lease_quantity = leases_amount[which(leases_amount$Partner == district_full_name),
+                                            which(!is.na(leases_amount[which(leases_amount$Partner == district_full_name),]))]
+    district_lease_priority = lease_priority[which(leases_amount$Partner == district_full_name),
+                                             which(!is.na(leases_amount[which(leases_amount$Partner == district_full_name),]))]
+    
+    # remove self from list and convert to kAF
+    district_lease_partners = district_lease_partners[1:(length(district_lease_partners)-1)]
+    district_lease_quantity = as.vector(unlist(district_lease_quantity[1:(length(district_lease_quantity)-1)])/1000 * -1)
+    district_lease_priority = as.vector(unlist(district_lease_priority[1:(length(district_lease_priority)-1)]))
   }
   
   # collect the names of AMAs that a district uses
@@ -232,7 +246,7 @@ for (d in entitlement_totals$Code) {
                                             "FED" = entitlement_fractions$FED[which(entitlement_fractions$User == district_full_name)],
                                             "NIA" = entitlement_fractions$NIA[which(entitlement_fractions$User == district_full_name)]),
                   "lease_partner" = as.list(district_lease_partners),
-                  "lease_quantity" = as.list(district_lease_quantity),
+                  "lease_quantity" = as.list(district_lease_quantity), # in kAF
                   "lease_priority" = as.list(district_lease_priority),
                   "priority_to_recharge" = c(priority_to_recharge),
                   "must_take_mead" = ifelse(test = entitlement_totals$Turnout[which(entitlement_totals$Code == d)] %in%
@@ -399,7 +413,7 @@ Pleasant = list("name" = "Lake Pleasant",
                                           "T2b" = pleasant_storage_capacity * carryover_frac/1000, 
                                           "T3" = pleasant_storage_capacity * carryover_frac/1000, 
                                           "DP" = pleasant_storage_capacity * carryover_frac/1000), 
-                "max_outflow" = 150000, # in kAF
+                "max_outflow" = 150000.0/1000, # in kAF
                 "dead_pool" = pleasant_unusable_storage/1000, # in kAF
                 "seepage" = pleasant_monthly_seepage_projections/1000, # in kAF
                 "evap" = pleasant_monthly_net_evap_projections/1000, # in kAF
