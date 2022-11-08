@@ -234,6 +234,20 @@ for (d in entitlement_totals$Code) {
   priority_to_recharge = 0 # 0: meet non-recharge demands first - 1: meet recharge goals first
   if (district_full_name == "CAGRD") {priority_to_recharge = 1}
   
+  # identify demand growth rates for each user
+  # will do this as a 2017-2021 5-year average annual delivery change
+  # while removing outliers (or using them to inform uncertainty ranges)
+  plot(AnnualDemand$Year,c(AnnualDemand[,district_full_name])[[1]]); title(district_full_name)
+  growth_rate = c(
+    round((AnnualDemand[6,district_full_name] - AnnualDemand[2,district_full_name])/AnnualDemand[2,district_full_name]/5, 
+          digits = 2))[[1]]
+  if (is.na(growth_rate)) {growth_rate = 0.0}
+  # if growth rate is too extreme, replace with 2020-2021 rate...
+  # if (abs(growth_rate) > 0.1) {
+  #   growth_rate = round((AnnualDemand[5,district_full_name] - AnnualDemand[6,district_full_name])/AnnualDemand[5,district_full_name], 
+  #                       digits = 1)
+  # }
+  
   district = list("name" = district_full_name, 
                   "MDD" = 0,
                   "AFY" = MaxAnnualDemand[which(names(MaxAnnualDemand) == district_full_name)]/1000, # converted to kAF 
@@ -256,6 +270,7 @@ for (d in entitlement_totals$Code) {
                   # "ag_mitigation_taker" = FALSE,
                   "ama_used" = as.list(ama_used),
                   "ama_share" = as.list(ama_share),
+                  "growth_rate" = growth_rate,
                   "zone" = "zone15" # THIS IS FOR CROP/IRRIGATION PURPOSES - CAP MODEL DOESN'T USE THIS INFORMATION SO IT DEFAULTS TO CA VALUES AND IGNORES THEM
                   )
   
